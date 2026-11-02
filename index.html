@@ -1,0 +1,2245 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>Pauper League</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--bg:#0b1020;--panel:#141b2f;--panel2:#1c2640;--text:#f3f5fb;--muted:#9ba8c4;--line:#2a3653;--accent:#b8f36b;--red:#ff7c86;--blue:#7dd3fc}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#182443 0,#0b1020 55%);color:var(--text);font:15px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,input,select{font:inherit}button{cursor:pointer;border:0;border-radius:12px;padding:11px 14px;background:var(--accent);color:#111827;font-weight:750}
+button.secondary{background:var(--panel2);color:var(--text);border:1px solid var(--line)}button.danger{background:#48232d;color:#ffd9dd}
+button:disabled{opacity:.45;cursor:not-allowed}
+input,select{width:100%;background:#0e1528;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:11px;min-width:0}
+label{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}
+h1,h2,h3,p{margin:0}h1{font-size:24px;letter-spacing:-.7px}h2{font-size:18px;margin-bottom:12px}
+small,.muted{color:var(--muted)}
+.app{max-width:1100px;margin:auto;padding:18px 14px 90px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+.brand{display:flex;gap:11px;align-items:center}
+.logo{height:42px;width:42px;border-radius:13px;background:var(--accent);color:#111827;display:grid;place-items:center;font-weight:900;font-size:19px}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:800}
+.sub{color:var(--muted);font-size:13px;margin-top:3px}
+.nav{display:flex;gap:7px;overflow:auto;padding:4px 0 14px;margin-bottom:8px}
+.nav button{white-space:nowrap;background:transparent;color:var(--muted);border:1px solid var(--line);padding:9px 12px}
+.nav button.active{background:var(--accent);color:#111827;border-color:var(--accent)}
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px}
+.card{background:linear-gradient(145deg,rgba(25,34,58,.97),rgba(18,25,44,.97));border:1px solid var(--line);border-radius:17px;padding:16px;min-width:0}
+.span12{grid-column:span 12}.span8{grid-column:span 8}.span7{grid-column:span 7}.span6{grid-column:span 6}.span5{grid-column:span 5}.span4{grid-column:span 4}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.metric{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px}
+.metric .num{font-size:27px;font-weight:850;letter-spacing:-1px}
+.metric .caption{font-size:12px;color:var(--muted)}
+.section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.section-head h2{margin:0}
+.formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.field.full{grid-column:1/-1}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.stack{display:grid;gap:10px}
+.tablewrap{overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font-weight:650;font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+td strong{font-size:14px}
+.rank{color:var(--accent);font-weight:900;width:28px}
+.pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#26334d;color:#cbd6ec;font-size:11px}
+.win{color:var(--accent);font-weight:800}.loss{color:var(--red);font-weight:800}
+.empty{padding:24px;text-align:center;color:var(--muted)}
+.barrow{display:grid;grid-template-columns:minmax(95px,1fr) 3fr 45px;gap:10px;align-items:center;margin:13px 0;font-size:12px}
+.bar{height:9px;border-radius:99px;background:#28324a;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:99px}
+.tabscontent{display:none}.tabscontent.show{display:block}
+.note{font-size:12px;color:var(--muted);margin-top:10px}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--accent);color:#111827;font-weight:750;padding:12px 18px;border-radius:12px;box-shadow:0 8px 35px #0008;display:none;z-index:10}
+.matchline{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.matchline .result{font-weight:850;font-size:17px}
+.mutedline{font-size:12px;color:var(--muted)}
+.dangerlink{background:none;color:var(--red);padding:4px 6px;font-size:12px}
+.tiny{font-size:11px}
+.life-total{font-size:clamp(64px,12vw,84px);line-height:1.1;font-weight:900;margin:12px 0 18px;letter-spacing:-3px}
+.life-value-wrap{position:relative;display:flex;align-items:center;justify-content:center}
+.life-change-indicator{position:absolute;left:calc(50% + 76px);top:50%;transform:translateY(-50%);font-size:20px;font-weight:900;line-height:1;padding:0;border-radius:0;background:transparent;color:var(--accent);opacity:0;pointer-events:none;white-space:nowrap;transition:opacity .12s ease}
+.life-change-indicator.visible{opacity:1}.life-change-indicator.negative{color:#ff9ba3}
+.arena-life-wrap{position:relative;display:flex;align-items:center;justify-content:center}
+.arena-change-indicator{position:absolute;left:calc(50% + clamp(88px,19vw,138px));top:50%;transform:translateY(-50%);font-size:clamp(16px,4vw,25px);font-weight:900;line-height:1;padding:0;border-radius:0;background:transparent;color:#b8f36b;opacity:0;pointer-events:none;white-space:nowrap;transition:opacity .12s ease}
+.arena-change-indicator.visible{opacity:1}.arena-change-indicator.negative{color:#ff9ba3}
+.life-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.life-controls button{min-height:58px;padding:12px 4px;font-size:19px;touch-action:manipulation}
+.life-wins{margin-top:14px;font-size:13px;padding:7px 11px}
+.life-player{padding:18px}
+.life-player .eyebrow{font-size:13px;letter-spacing:1px}
+.life-players{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:680px){
+.app{padding:12px 8px 90px}
+.life-players{grid-template-columns:1fr;gap:10px}
+.life-player{padding:16px 12px}
+.life-total{font-size:76px;margin:8px 0 14px}
+.life-change-indicator{left:calc(50% + 66px);font-size:18px}
+.life-controls{gap:7px}
+.life-controls button{min-height:62px;font-size:20px;border-radius:14px}
+.life-wins{margin-top:12px}
+.top{align-items:flex-start}
+.top .actions{margin:0}
+.top .actions button{padding:9px 10px;font-size:12px}
+.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.metric{padding:12px}
+.metric .num{font-size:24px}
+.span8,.span7,.span6,.span5,.span4{grid-column:span 12}
+.card{padding:14px}
+.formgrid{grid-template-columns:1fr}
+.field.full{grid-column:auto}
+.barrow{grid-template-columns:85px 1fr 40px}
+.nav{margin-right:-10px;padding-right:10px}
+.hide-mobile{display:none}
+}
+.round-subnav{display:flex;gap:7px;overflow:auto;margin-bottom:12px;padding:2px 0}
+.round-subnav button{white-space:nowrap;padding:8px 12px;font-size:12px;background:transparent;color:var(--muted);border:1px solid var(--line)}
+.round-subnav button.active{background:var(--accent);color:#111827;border-color:var(--accent)}
+.round-pane{display:none}.round-pane.active{display:block}
+.attendance-chart{height:190px;display:flex;align-items:stretch;gap:8px;overflow-x:auto;padding:12px 4px 0;border-bottom:1px solid var(--line)}
+.attendance-chart-item{flex:1 0 42px;min-width:42px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px}
+.attendance-chart-barwrap{height:132px;width:100%;display:flex;align-items:flex-end;justify-content:center}
+.attendance-chart-bar{width:min(28px,70%);min-height:2px;border-radius:6px 6px 0 0;background:var(--accent);position:relative}
+.attendance-chart-count{font-size:11px;font-weight:800;color:var(--text);position:absolute;top:-19px;left:50%;transform:translateX(-50%)}
+.attendance-chart-label{font-size:10px;color:var(--muted);white-space:nowrap;padding-bottom:5px}
+.matchup-cell{text-align:center;min-width:62px;color:#fff;border-radius:5px;font-variant-numeric:tabular-nums}
+.matchup-cell b{font-size:14px}
+.matchup-cell .tiny{opacity:.9}
+.inline-add{display:flex;gap:7px}.inline-add input{min-width:0;flex:1}.inline-add button{flex:0 0 auto;min-height:44px;padding:10px 12px}
+.life-player,.arena-half{position:relative;isolation:isolate;overflow:hidden}
+.life-player::before,.arena-half::before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;opacity:0;transition:opacity .12s ease}
+.life-player.pulse-gain::before,.arena-half.pulse-gain::before{background:linear-gradient(to top,rgba(80,230,120,.02) 0%,rgba(80,230,120,.22) 38%,rgba(80,230,120,.12) 62%,transparent 88%);animation:lifeGlow .9s ease-out forwards}
+.life-player.pulse-loss::before,.arena-half.pulse-loss::before{background:linear-gradient(to top,rgba(255,55,75,.03) 0%,rgba(255,55,75,.26) 38%,rgba(255,55,75,.13) 62%,transparent 88%);animation:lifeGlow .9s ease-out forwards}
+.life-player>*,.arena-half>*{position:relative;z-index:1}
+@keyframes lifeGlow{0%{opacity:0}12%{opacity:1}65%{opacity:.8}100%{opacity:0}}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{min-width:320px}
+.app{width:100%;max-width:760px;padding:12px 10px calc(92px + env(safe-area-inset-bottom))}
+.top{gap:8px;margin-bottom:12px}
+.brand{min-width:0}.brand h1{font-size:22px}
+.logo{flex:0 0 40px;width:40px;height:40px}
+.nav{position:sticky;top:0;z-index:5;background:rgba(11,16,32,.96);backdrop-filter:blur(12px);margin:0 -10px 12px;padding:8px 10px 10px;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav button{flex:0 0 auto;min-height:42px;padding:10px 13px}
+.card{border-radius:15px;padding:13px}
+.grid{gap:10px}
+.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+.metric{padding:12px}.metric .num{font-size:24px}
+.span12,.span8,.span7,.span6,.span5,.span4{grid-column:span 12}
+.formgrid{grid-template-columns:1fr}
+.field.full{grid-column:auto}
+.actions{gap:8px}.actions button{min-height:44px;flex:1 1 auto}
+.tablewrap{margin:0 -4px;max-width:calc(100% + 8px)}
+table{font-size:12px}th,td{padding:9px 7px}
+.life-players{grid-template-columns:repeat(2,minmax(0,1fr))}
+.life-player{padding:14px 8px}
+.life-total{font-size:clamp(52px,16vw,76px);letter-spacing:-2px;margin:8px 0 12px}
+.life-controls{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.life-controls button{min-height:54px;font-size:21px}
+.matchline{align-items:flex-start}.matchline .result{font-size:20px}
+.barrow{grid-template-columns:minmax(72px,1fr) 1.4fr 38px;gap:7px}
+.syncBanner{overflow-wrap:anywhere}
+.life-players{display:none}.life-players.started{display:grid}
+.life-setup-status{margin-top:12px}
+.life-confirm{position:fixed;inset:0;z-index:1200;background:#050914eF;display:none;align-items:center;justify-content:center;padding:20px}
+.life-confirm.active{display:flex}
+.life-confirm-card{width:min(100%,420px);background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 20px 70px #0009}
+.life-confirm-card h2{margin-bottom:10px}
+.life-confirm-card input{display:block;width:100%;font-size:16px;min-height:46px;margin:8px 0 16px;position:relative;z-index:1;pointer-events:auto;user-select:text;-webkit-user-select:text}
+.life-confirm-card p{color:var(--muted);margin-bottom:16px}
+@media(min-width:700px){
+.app{max-width:1100px;padding:18px 14px 90px}
+.grid{gap:12px}
+.span8{grid-column:span 8}.span7{grid-column:span 7}.span6{grid-column:span 6}.span5{grid-column:span 5}.span4{grid-column:span 4}
+.formgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.field.full{grid-column:1/-1}
+.life-players{grid-template-columns:repeat(2,minmax(0,1fr))}
+.life-controls{grid-template-columns:repeat(4,minmax(0,1fr))}
+.nav{position:static;background:transparent;backdrop-filter:none;margin:0 0 8px;padding:4px 0 14px}
+.metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+#lifeArena{display:none;position:fixed;inset:0;z-index:1000;background:#080d19;color:var(--text);height:100vh;height:100dvh;width:100vw;overflow:hidden;grid-template-rows:1fr 1fr;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);touch-action:manipulation}
+#lifeArena.active{display:grid}
+.arena-half{position:relative;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:clamp(5px,1.6vh,14px);padding:clamp(10px,3vw,24px);min-height:0;text-align:center;overflow:hidden}
+.arena-half.opponent{transform:rotate(180deg);border-bottom:1px solid #33415f;background:linear-gradient(160deg,#18233b,#0d1425)}
+.arena-half.you{background:linear-gradient(160deg,#0d1425,#18233b)}
+.arena-name{font-size:clamp(14px,3.5vw,22px);font-weight:850;max-width:90%;overflow-wrap:anywhere;line-height:1.15}
+.arena-life{font-size:clamp(76px,24vw,150px);font-weight:950;line-height:.95;letter-spacing:-.06em;font-variant-numeric:tabular-nums}
+.arena-wins{font-size:clamp(12px,3vw,16px);color:#c8d4ec}
+.arena-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(6px,1.8vw,12px);width:min(100%,560px)}
+.arena-controls button{min-height:clamp(48px,9vh,72px);font-size:clamp(19px,5vw,30px);border-radius:14px;padding:6px 2px;touch-action:manipulation}
+.arena-controls button.secondary{background:#202c45}
+.arena-extra{display:flex;gap:8px;width:min(100%,560px)}
+.arena-extra button{flex:1;min-height:34px;padding:6px 8px;font-size:12px;background:#202c45;color:var(--text);border:1px solid #35435f}
+.arena-extra button.concede{background:#48232d;color:#ffd9dd;border-color:#63303b}
+.arena-exit{position:absolute;z-index:2;left:50%;top:50%;transform:translate(-50%,-50%);font-size:11px;min-height:32px;padding:6px 10px;border:2px solid #080d19;border-radius:999px;box-shadow:0 2px 12px #0008;background:#d6e2f7;color:#101827;white-space:nowrap}
+body.arena-open{overflow:hidden}
+@media(min-width:700px){.arena-life{font-size:clamp(90px,18vh,160px)}}
+.match-entry{align-self:start}
+.match-entry-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none;user-select:none;font-size:1.15rem;font-weight:700}
+.match-entry-summary::-webkit-details-marker{display:none}
+.match-entry-icon{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid var(--line);border-radius:9px;color:var(--muted);font-size:20px;line-height:1;flex-shrink:0}
+.match-entry[open] .match-entry-icon{transform:rotate(45deg)}
+.match-entry form{margin-top:16px}
+
+/* Auth & multi-league screens */
+.screen{display:none;min-height:100vh;padding:24px 16px}
+.screen.active{display:block}
+.auth-card{max-width:420px;margin:40px auto;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:28px 22px}
+.auth-card h1{margin-bottom:6px}
+.auth-card .sub{margin-bottom:22px}
+.auth-card .field{margin-bottom:14px}
+.auth-card .actions{margin-top:18px;flex-direction:column}
+.auth-card .actions button{width:100%}
+.auth-divider{display:flex;align-items:center;gap:12px;margin:18px 0;color:var(--muted);font-size:13px}
+.auth-divider::before,.auth-divider::after{content:"";flex:1;height:1px;background:var(--line)}
+.league-grid{display:grid;gap:12px;margin-top:18px}
+.league-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;cursor:pointer;transition:border-color .15s}
+.league-card:hover{border-color:var(--accent)}
+.league-card .role{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);font-weight:800}
+.league-card h3{margin:6px 0 8px;font-size:18px}
+.league-meta{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.header-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.role-pill{background:#26334d;color:var(--accent);font-size:11px;padding:4px 10px;border-radius:999px;font-weight:700;text-transform:uppercase;letter-spacing:.6px}
+.guest-banner{background:#1a2a3a;border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--muted)}
+.error-box{background:#3a1a22;border:1px solid #a94b57;color:#ffd9dd;border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:14px}
+.success-box{background:#1a2f1a;border:1px solid #507d37;color:#c8f0c0;border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:14px}
+.loading-overlay{position:fixed;inset:0;background:#0b1020ee;display:flex;align-items:center;justify-content:center;z-index:2000;flex-direction:column;gap:16px}
+.loading-overlay.hidden{display:none}
+.spinner{width:36px;height:36px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="loadingOverlay" class="loading-overlay">
+  <div class="spinner"></div>
+  <div class="muted">Caricamento…</div>
+</div>
+
+<!-- AUTH SCREEN -->
+<div id="screenAuth" class="screen">
+  <div class="auth-card">
+    <div class="brand" style="margin-bottom:18px">
+      <div class="logo">P</div>
+      <div>
+        <div class="eyebrow">League tracker</div>
+        <h1>Pauper League</h1>
+      </div>
+    </div>
+    <div id="authError" class="error-box" style="display:none"></div>
+    <div id="authSuccess" class="success-box" style="display:none"></div>
+
+    <div id="authLoginView">
+      <p class="sub">Accedi per gestire le tue leghe</p>
+      <button id="btnGoogle" style="width:100%;margin-bottom:8px">Continua con Google</button>
+      <div class="auth-divider">oppure</div>
+      <div class="field"><label>Email</label><input id="loginEmail" type="email" autocomplete="email" placeholder="tua@email.com"></div>
+      <div class="field"><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+      <div class="actions">
+        <button id="btnLogin">Accedi</button>
+        <button class="secondary" id="btnShowRegister">Crea account</button>
+        <button class="secondary" id="btnShowForgot" style="font-size:13px">Password dimenticata</button>
+      </div>
+    </div>
+
+    <div id="authRegisterView" style="display:none">
+      <p class="sub">Crea un nuovo account</p>
+      <div class="field"><label>Email</label><input id="regEmail" type="email" autocomplete="email"></div>
+      <div class="field"><label>Password</label><input id="regPassword" type="password" autocomplete="new-password" minlength="6"></div>
+      <div class="field"><label>Conferma password</label><input id="regPassword2" type="password" autocomplete="new-password" minlength="6"></div>
+      <div class="actions">
+        <button id="btnRegister">Registrati</button>
+        <button class="secondary" id="btnShowLogin">Torna al login</button>
+      </div>
+    </div>
+
+    <div id="authForgotView" style="display:none">
+      <p class="sub">Inserisci l’email per ricevere il link di recupero</p>
+      <div class="field"><label>Email</label><input id="forgotEmail" type="email" autocomplete="email"></div>
+      <div class="actions">
+        <button id="btnForgot">Invia link di recupero</button>
+        <button class="secondary" id="btnBackLogin">Torna al login</button>
+      </div>
+    </div>
+
+    <div id="authResetView" style="display:none">
+      <p class="sub">Imposta la nuova password</p>
+      <div class="field"><label>Nuova password</label><input id="resetPassword" type="password" minlength="6"></div>
+      <div class="field"><label>Conferma password</label><input id="resetPassword2" type="password" minlength="6"></div>
+      <div class="actions">
+        <button id="btnReset">Salva nuova password</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LEAGUES SCREEN -->
+<div id="screenLeagues" class="screen">
+  <div class="app" style="max-width:760px">
+    <header class="top">
+      <div class="brand">
+        <div class="logo">P</div>
+        <div>
+          <div class="eyebrow">Le tue leghe</div>
+          <h1>Le mie leghe</h1>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="secondary" id="btnLogout">Esci</button>
+      </div>
+    </header>
+    <div id="leaguesError" class="error-box" style="display:none"></div>
+    <div id="leaguesEmpty" class="card" style="display:none;text-align:center;padding:32px 20px">
+      <h2 style="margin-bottom:10px">Nessuna lega ancora</h2>
+      <p class="muted" style="margin-bottom:18px">Non appartieni ancora a nessuna lega. Chiedi un invito all’amministratore oppure inserisci un codice di invito.</p>
+      <div class="field" style="max-width:320px;margin:0 auto 12px">
+        <label>Codice / link invito</label>
+        <input id="inviteCodeInput" placeholder="Incolla il codice o il link">
+      </div>
+      <button id="btnAcceptInvite">Accetta invito</button>
+    </div>
+    <div id="leaguesList" class="league-grid"></div>
+    <div class="card" style="margin-top:20px">
+      <h2>Hai un invito?</h2>
+      <p class="muted" style="margin-bottom:12px">Incolla il codice o il link ricevuto dall’admin della lega.</p>
+      <div class="inline-add">
+        <input id="inviteCodeInput2" placeholder="Codice invito">
+        <button id="btnAcceptInvite2">Accetta</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN APP SCREEN -->
+<div id="screenApp" class="screen">
+<div class="app">
+<header class="top">
+  <div class="brand">
+    <div class="logo">P</div>
+    <div>
+      <div class="eyebrow" id="leagueEyebrow">League tracker</div>
+      <h1 id="leagueTitle">Pauper League</h1>
+      <div class="sub" id="leagueSub">Matchup, classifica e statistiche</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <span class="role-pill" id="rolePill">—</span>
+    <button class="secondary" id="btnBackLeagues" title="Torna alle leghe">Le mie leghe</button>
+  </div>
+</header>
+
+<div id="guestBanner" class="guest-banner" style="display:none">Stai visualizzando questa lega come ospite. Puoi solo consultare i dati.</div>
+<div id="syncBanner" class="note syncBanner" style="margin:0 0 12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)">Archivio: in attesa…</div>
+
+<div class="nav" id="mainNav">
+  <button class="active" data-tab="dashboard">Panoramica</button>
+  <button data-tab="lifecounter" data-role="member,admin">Segna vita</button>
+  <button data-tab="matches">Partite</button>
+  <button data-tab="players">Giocatori</button>
+  <button data-tab="decks">Mazzi</button>
+  <button data-tab="matchups">Matchup</button>
+  <button data-tab="rounds">Giornate</button>
+  <button data-tab="admin" data-role="admin">Gestione lega</button>
+  <button data-tab="settings" data-role="admin">Backup & dati</button>
+</div>
+
+<section id="dashboard" class="tabscontent show">
+  <div class="metrics" id="metrics"></div>
+  <div class="grid">
+    <div class="card span7"><div class="section-head"><h2>Classifica</h2><span class="pill">W-L-D · punti</span></div><div class="tablewrap" id="standings"></div></div>
+    <div class="card span5"><div class="section-head"><h2>Win rate per mazzo</h2><span class="pill">game vinti</span></div><div id="deckBars"></div><p class="note">Basato sui game registrati (non solo sui match).</p></div>
+    <div class="card span6"><h2>Ultime partite</h2><div id="recent"></div></div>
+    <div class="card span6"><h2>Matchup più giocati</h2><div id="topMatchups"></div></div>
+    <div class="card span6"><h2>Presenze per giornata</h2><div id="attendanceTrend"></div></div>
+    <div class="card span6"><h2>Più fidelizzati</h2><div id="loyaltyTop"></div></div>
+  </div>
+</section>
+
+<section id="lifecounter" class="tabscontent">
+  <div class="grid">
+    <div class="card span12">
+      <div id="lcSetupHeader" class="section-head"><h2>Segna vita · partita al meglio delle 3</h2><span class="pill">20 vite iniziali</span></div>
+      <p id="lcSetupHelp" class="muted" style="margin-bottom:14px">Seleziona i due sfidanti. Se un giocatore non è presente nella lista, scegli ＋ Aggiungi in fondo alla tendina. Data, giornata e presenze vengono registrate automaticamente al salvataggio del match.</p>
+      <div id="lcSetupPlayers" class="formgrid" style="margin-top:12px">
+        <div class="field"><label>Giocatore A</label><select id="lcPlayerA"></select></div>
+        <div class="field"><label>Giocatore B</label><select id="lcPlayerB"></select></div>
+      </div>
+      <div class="field" id="lcTimerSetup" style="max-width:280px;margin-top:12px">
+        <label for="lcTimerMinutes">Timer partita (facoltativo, minuti)</label>
+        <input id="lcTimerMinutes" type="number" min="0" max="600" step="1" value="0" inputmode="numeric" placeholder="Es. 50">
+        <p class="note">0 = timer disattivato.</p>
+      </div>
+      <div id="lifePlayers" class="grid life-players" style="margin-top:14px">
+        <div class="card span6 life-player" style="text-align:center;background:#10182b">
+          <div id="lcNameA" class="eyebrow">Giocatore A</div>
+          <div class="life-value-wrap"><div id="lcLifeA" class="life-total">20</div><span id="lcChangeA" class="life-change-indicator" aria-live="polite"></span></div>
+          <div class="life-controls">
+            <button onclick="changeLife('A',-5)" class="secondary">−5</button>
+            <button onclick="changeLife('A',-1)" class="secondary">−1</button>
+            <button onclick="changeLife('A',1)">+1</button>
+            <button onclick="changeLife('A',5)">+5</button>
+          </div>
+          <div id="lcWinsA" class="pill life-wins">Game vinti: 0</div>
+        </div>
+        <div class="card span6 life-player" style="text-align:center;background:#10182b">
+          <div id="lcNameB" class="eyebrow">Giocatore B</div>
+          <div class="life-value-wrap"><div id="lcLifeB" class="life-total">20</div><span id="lcChangeB" class="life-change-indicator" aria-live="polite"></span></div>
+          <div class="life-controls">
+            <button onclick="changeLife('B',-5)" class="secondary">−5</button>
+            <button onclick="changeLife('B',-1)" class="secondary">−1</button>
+            <button onclick="changeLife('B',1)">+1</button>
+            <button onclick="changeLife('B',5)">+5</button>
+          </div>
+          <div id="lcWinsB" class="pill life-wins">Game vinti: 0</div>
+        </div>
+      </div>
+      <div class="card span12 life-setup-status" style="margin-top:12px">
+        <div id="lcStatus" class="matchline"><strong>Pronto per iniziare</strong><span class="muted">Seleziona due giocatori diversi.</span></div>
+        <div class="actions"><button id="lcStartButton" onclick="startLifeMatch()">Nuova partita</button></div>
+        <p id="lcActiveNote" class="note" style="display:none">Partita in corso. Per assegnare un game su concessione usa i pulsanti dedicati nel contatore a schermo intero.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="matches" class="tabscontent">
+  <div class="grid">
+    <details class="card span5 match-entry" id="matchEntryDetails">
+      <summary class="match-entry-summary"><span>Registra una partita</span><span class="match-entry-icon" aria-hidden="true">＋</span></summary>
+      <form id="matchForm">
+        <div class="formgrid">
+          <div class="field"><label>Giornata</label><input id="mRound" type="number" min="1" value="1" required></div>
+          <div class="field"><label>Data</label><input id="mDate" type="date" required></div>
+          <div class="field"><label>Giocatore A</label><select id="mA" required></select></div>
+          <div class="field"><label>Mazzo A</label><select id="mDeckA" required></select></div>
+          <div class="field"><label>Giocatore B</label><select id="mB" required></select></div>
+          <div class="field"><label>Mazzo B</label><select id="mDeckB" required></select></div>
+          <div class="field"><label>Game vinti da A</label><select id="mScoreA"><option>2</option><option>1</option><option>0</option></select></div>
+          <div class="field"><label>Game vinti da B</label><select id="mScoreB"><option>0</option><option>1</option><option>2</option></select></div>
+          <div class="field full"><label>Note (opzionale)</label><input id="mNotes" placeholder="Es. game 3, sideboard…"></div>
+        </div>
+        <div class="actions">
+          <button type="submit">Salva partita</button>
+          <button type="button" class="secondary" onclick="resetMatchForm()">Pulisci</button>
+        </div>
+        <p class="note">Match validi: 2-0, 2-1, 1-2, 0-2.</p>
+      </form>
+    </details>
+    <div class="card span7">
+      <div class="section-head"><h2>Storico partite</h2>
+        <select id="filterRound" style="max-width:160px" onchange="renderMatches()"><option value="all">Tutte le giornate</option></select>
+      </div>
+      <div id="matchList"></div>
+    </div>
+  </div>
+</section>
+
+<section id="players" class="tabscontent">
+  <div class="card">
+    <h2>Giocatori della lega</h2>
+    <p class="note" style="margin:0 0 12px">I giocatori vengono aggiunti dalla sezione Segna vita. Il filtro data include entrambe le date selezionate.</p>
+    <div class="formgrid" style="margin:0 0 14px">
+      <div class="field"><label for="playersDateFrom">Dal</label><input id="playersDateFrom" type="date" onchange="renderPlayers()"></div>
+      <div class="field"><label for="playersDateTo">Al</label><input id="playersDateTo" type="date" onchange="renderPlayers()"></div>
+      <div class="field" style="align-self:end"><button type="button" class="secondary" onclick="clearPlayersDateFilter()">Azzera filtro</button></div>
+    </div>
+    <div id="playerList"></div>
+  </div>
+</section>
+
+<section id="decks" class="tabscontent">
+  <div class="card">
+    <h2>Statistiche per singolo mazzo</h2>
+    <p class="note" style="margin:0 0 12px">Gli archetipi possono essere aggiunti dal menu di selezione mazzo al termine di una partita.</p>
+    <div id="deckStats"></div>
+  </div>
+</section>
+
+<section id="matchups" class="tabscontent">
+  <div class="card">
+    <div class="section-head"><h2>Matrice matchup tra archetipi</h2><span class="pill">match vinti / giocati</span></div>
+    <div id="matrix"></div>
+    <p class="note">La percentuale è calcolata sui match conclusi fra due archetipi, non sui singoli game. Gli speculari mirror sono esclusi dalla matrice incrociata.</p>
+  </div>
+</section>
+
+<section id="rounds" class="tabscontent">
+  <div class="grid">
+    <div class="card span12">
+      <div class="section-head"><h2>Affluenza e fidelizzazione</h2><span class="pill">Giornate ricostruite dai match</span></div>
+      <p class="note" style="margin:0 0 12px">Le giornate vengono ricostruite automaticamente dalla data delle partite. I giocatori che disputano almeno un match risultano presenti.</p>
+      <div id="attendanceSummary"></div>
+      <div id="loyaltyTable"></div>
+    </div>
+    <div class="card span12">
+      <div class="round-subnav" role="tablist" aria-label="Sezioni giornate">
+        <button type="button" class="active" data-round-pane="trend">Andamento giocatori</button>
+        <button type="button" data-round-pane="results">Risultati per giornata</button>
+      </div>
+      <div id="roundTrendPane" class="round-pane active">
+        <div class="section-head"><h2>Giocatori totali nel tempo</h2><span class="pill">Per giornata</span></div>
+        <p class="note" style="margin:0 0 8px">Numero di giocatori distinti che hanno disputato almeno un match in ciascuna giornata.</p>
+        <div id="playerAttendanceChart"></div>
+      </div>
+      <div id="roundResultsPane" class="round-pane">
+        <h2>Risultati per giornata</h2>
+        <div id="roundStats"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="admin" class="tabscontent">
+  <div class="grid">
+    <div class="card span6">
+      <h2>Membri della lega</h2>
+      <div id="membersList"></div>
+    </div>
+    <div class="card span6">
+      <h2>Crea invito member</h2>
+      <p class="muted" style="margin-bottom:12px">Genera un link da condividere. L’utente che lo apre otterrà il ruolo member dopo il login.</p>
+      <button id="btnCreateInvite">Crea invito</button>
+      <div id="inviteResult" style="margin-top:14px;display:none">
+        <label>Link invito (copia e condividi)</label>
+        <input id="inviteLink" readonly onclick="this.select()">
+        <p class="note">Il link è valido fino alla scadenza impostata dal backend.</p>
+      </div>
+    </div>
+    <div class="card span6">
+      <h2>Link ospite</h2>
+      <p class="muted" style="margin-bottom:12px">Genera un link di sola lettura (senza account).</p>
+      <div class="field" style="max-width:160px">
+        <label>Giorni di validità</label>
+        <input id="guestDays" type="number" min="1" max="365" value="30">
+      </div>
+      <div class="actions">
+        <button id="btnCreateGuest">Crea link ospite</button>
+      </div>
+      <div id="guestResult" style="margin-top:14px;display:none">
+        <label>Link ospite</label>
+        <input id="guestLink" readonly onclick="this.select()">
+      </div>
+      <div id="guestLinksList" style="margin-top:16px"></div>
+    </div>
+    <div class="card span6">
+      <h2>Info lega</h2>
+      <div id="leagueInfo"></div>
+    </div>
+  </div>
+</section>
+
+<section id="settings" class="tabscontent">
+  <div class="grid">
+    <div class="card span6">
+      <h2>Backup e trasferimento</h2>
+      <p class="muted">Esporta i dati della lega corrente in JSON. Importando un backup, i dati della lega corrente vengono sostituiti (solo questa lega).</p>
+      <div class="actions">
+        <button onclick="exportData()">Scarica backup JSON</button>
+        <button class="secondary" onclick="document.getElementById('importFile').click()">Importa backup</button>
+        <input id="importFile" type="file" accept="application/json" hidden onchange="importData(event)">
+      </div>
+      <p class="note">Solo gli admin possono esportare e importare.</p>
+    </div>
+    <div class="card span6">
+      <h2>Gestione dati</h2>
+      <p class="muted">Cancella tutti i dati della lega corrente. Operazione irreversibile.</p>
+      <div class="actions">
+        <button class="danger" onclick="clearAll()">Cancella tutti i dati della lega</button>
+      </div>
+      <p class="note">Prima di cancellare, esporta un backup.</p>
+    </div>
+  </div>
+</section>
+
+<div id="lifeArena" aria-label="Segna vita a schermo intero">
+  <div id="lcTimerPanel" style="display:none;position:absolute;z-index:5;top:50%;left:50%;transform:translate(-50%,-50%);background:#10182b;border:1px solid #465777;border-radius:14px;padding:8px 14px;text-align:center;min-width:160px;max-width:90%;box-shadow:0 4px 24px #0008">
+    <div id="lcTimerLabel" style="font-size:11px;color:#b8c5df;text-transform:uppercase;letter-spacing:1px">Tempo</div>
+    <div id="lcTimerValue" style="font-size:26px;font-weight:900;font-variant-numeric:tabular-nums">--:--</div>
+    <div id="lcTurnsPanel" style="display:none;margin-top:6px">
+      <div id="lcTurnValue" style="font-weight:800;margin-bottom:5px">Turni supplementari: 0/5</div>
+      <div style="display:flex;gap:5px"><button class="secondary" style="font-size:12px;padding:8px 18px;width:100%" onclick="recordExtraTurn()">Turno</button></div>
+    </div>
+  </div>
+  <section class="arena-half opponent" aria-label="Lato avversario">
+    <div class="arena-name" id="arenaNameB">Giocatore B</div>
+    <div class="arena-life-wrap"><div class="arena-life" id="arenaLifeB">20</div><span id="arenaChangeB" class="arena-change-indicator" aria-live="polite"></span></div>
+    <div class="arena-wins" id="arenaWinsB">Game vinti: 0</div>
+    <div class="arena-controls">
+      <button class="secondary" onclick="changeLife('B',-5)">−5</button>
+      <button class="secondary" onclick="changeLife('B',-1)">−1</button>
+      <button onclick="changeLife('B',1)">+1</button>
+      <button onclick="changeLife('B',5)">+5</button>
+    </div>
+    <div class="arena-extra">
+      <button onclick="resetLifeGame()">Reset vite</button>
+      <button class="concede" onclick="awardLifeGame('A')">Concedo game</button>
+    </div>
+  </section>
+  <section class="arena-half you" aria-label="Il tuo lato">
+    <div class="arena-name" id="arenaNameA">Giocatore A</div>
+    <div class="arena-life-wrap"><div class="arena-life" id="arenaLifeA">20</div><span id="arenaChangeA" class="arena-change-indicator" aria-live="polite"></span></div>
+    <div class="arena-wins" id="arenaWinsA">Game vinti: 0</div>
+    <div class="arena-controls">
+      <button class="secondary" onclick="changeLife('A',-5)">−5</button>
+      <button class="secondary" onclick="changeLife('A',-1)">−1</button>
+      <button onclick="changeLife('A',1)">+1</button>
+      <button onclick="changeLife('A',5)">+5</button>
+    </div>
+    <div class="arena-extra">
+      <button onclick="resetLifeGame()">Reset vite</button>
+      <button class="concede" onclick="awardLifeGame('B')">Concedo game</button>
+    </div>
+  </section>
+  <button class="arena-exit" onclick="closeLifeArena()" aria-label="Esci dalla visualizzazione a schermo intero">Esci ✕</button>
+</div>
+
+<div id="lifeConfirm" class="life-confirm" role="dialog" aria-modal="true">
+  <div class="life-confirm-card">
+    <h2 id="lifeConfirmTitle">Game concluso?</h2>
+    <p id="lifeConfirmText">Un giocatore ha raggiunto zero vite.</p>
+    <div class="actions">
+      <button class="secondary" onclick="undoLastLifeMove()">Annulla ultima mossa</button>
+      <button onclick="confirmLifeGame()">Conferma fine game</button>
+    </div>
+  </div>
+</div>
+
+<div id="addPlayerModal" class="life-confirm" role="dialog" aria-modal="true">
+  <div class="life-confirm-card">
+    <h2>Nuovo giocatore</h2>
+    <p class="muted" style="margin-bottom:12px">Inserisci il nome o nickname da aggiungere alla lista.</p>
+    <label for="addPlayerName">Nome / nickname</label>
+    <input id="addPlayerName" type="text" maxlength="60" autocomplete="off" placeholder="Es. Alex" onkeydown="if(event.key==='Enter'){event.preventDefault();savePlayerFromLifeModal()}">
+    <div class="actions">
+      <button class="secondary" onclick="cancelPlayerFromLifeModal()">Annulla</button>
+      <button onclick="savePlayerFromLifeModal()">Aggiungi giocatore</button>
+    </div>
+  </div>
+</div>
+
+<div id="addDeckModal" class="life-confirm" role="dialog" aria-modal="true">
+  <div class="life-confirm-card">
+    <h2>Nuovo archetipo</h2>
+    <p class="muted" style="margin-bottom:12px">Inserisci il nome dell'archetipo da aggiungere alla lista.</p>
+    <label for="addDeckName">Nome archetipo</label>
+    <input id="addDeckName" type="text" maxlength="60" autocomplete="off" placeholder="Es. Mono Blue Terror" onkeydown="if(event.key==='Enter'){event.preventDefault();saveDeckFromLifeModal()}">
+    <div class="actions">
+      <button class="secondary" onclick="cancelDeckFromLifeModal()">Annulla</button>
+      <button onclick="saveDeckFromLifeModal()">Aggiungi archetipo</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+</div><!-- /app -->
+</div><!-- /screenApp -->
+
+<script>
+/* ============================================================
+   CONFIGURAZIONE SUPABASE — INSERISCI QUI LA PUBLISHABLE KEY
+   ============================================================ */
+const SUPABASE_URL = 'https://wowebgqwpbpyfckknkxk.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'INSERISCI_QUI_LA_PUBLISHABLE_KEY'; // <-- sostituisci
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
+  }
+});
+
+/* ============================================================
+   STATO APPLICAZIONE
+   ============================================================ */
+let currentUser = null;
+let currentSession = null;
+let userLeagues = [];          // { league_id, role, league: {id, name, ...} }
+let currentLeagueId = null;
+let currentRole = null;        // 'admin' | 'member' | 'guest'
+let currentLeagueMeta = null;
+let guestToken = null;
+let db = { players: [], decks: [], matches: [], rounds: [], version: 2, league: { name: '' } };
+let realtimeChannel = null;
+let isGuestMode = false;
+
+/* ============================================================
+   UTILITY
+   ============================================================ */
+function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2, 10); }
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function toast(s){ const el = document.getElementById('toast'); el.textContent = s; el.style.display = 'block'; setTimeout(() => el.style.display = 'none', 2300); }
+function setSyncStatus(msg, kind = 'info'){
+  const el = document.getElementById('syncBanner');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.borderColor = kind === 'ok' ? '#507d37' : kind === 'error' ? '#a94b57' : 'var(--line)';
+}
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+}
+function showLoading(show){
+  document.getElementById('loadingOverlay').classList.toggle('hidden', !show);
+}
+function canWrite(){ return currentRole === 'admin' || currentRole === 'member'; }
+function canAdmin(){ return currentRole === 'admin'; }
+function canDelete(){ return currentRole === 'admin'; }
+
+/* ============================================================
+   AUTH
+   ============================================================ */
+async function initAuth(){
+  showLoading(true);
+  // Guest token from URL?
+  const params = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  guestToken = params.get('guest') || hashParams.get('guest') || null;
+  const inviteToken = params.get('invite') || hashParams.get('invite') || null;
+
+  // Handle password recovery
+  if (window.location.hash.includes('type=recovery') || params.get('type') === 'recovery') {
+    showScreen('screenAuth');
+    document.getElementById('authLoginView').style.display = 'none';
+    document.getElementById('authRegisterView').style.display = 'none';
+    document.getElementById('authForgotView').style.display = 'none';
+    document.getElementById('authResetView').style.display = 'block';
+    showLoading(false);
+    return;
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    currentSession = session;
+    currentUser = session.user;
+    if (inviteToken) {
+      await acceptInvite(inviteToken);
+    }
+    await loadUserLeagues();
+    showScreen('screenLeagues');
+  } else if (guestToken) {
+    await enterGuestMode(guestToken);
+  } else {
+    showScreen('screenAuth');
+  }
+  showLoading(false);
+
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      currentSession = session;
+      currentUser = session.user;
+      isGuestMode = false;
+      guestToken = null;
+      await loadUserLeagues();
+      showScreen('screenLeagues');
+    } else if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      currentSession = null;
+      userLeagues = [];
+      leaveLeague();
+      showScreen('screenAuth');
+    }
+  });
+}
+
+async function loginWithGoogle(){
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin + window.location.pathname }
+  });
+  if (error) showAuthError(error.message);
+}
+
+async function loginWithEmail(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if (!email || !password) return showAuthError('Inserisci email e password');
+  showLoading(true);
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  showLoading(false);
+  if (error) showAuthError(mapAuthError(error));
+}
+
+async function registerWithEmail(){
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const password2 = document.getElementById('regPassword2').value;
+  if (!email || !password) return showAuthError('Inserisci email e password');
+  if (password.length < 6) return showAuthError('La password deve avere almeno 6 caratteri');
+  if (password !== password2) return showAuthError('Le password non coincidono');
+  showLoading(true);
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: window.location.origin + window.location.pathname }
+  });
+  showLoading(false);
+  if (error) return showAuthError(mapAuthError(error));
+  if (data.user && !data.session) {
+    showAuthSuccess('Registrazione completata. Controlla la tua email per confermare l’account, poi effettua il login.');
+    document.getElementById('authRegisterView').style.display = 'none';
+    document.getElementById('authLoginView').style.display = 'block';
+  } else {
+    // auto-login
+  }
+}
+
+async function forgotPassword(){
+  const email = document.getElementById('forgotEmail').value.trim();
+  if (!email) return showAuthError('Inserisci l’email');
+  showLoading(true);
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + window.location.pathname
+  });
+  showLoading(false);
+  if (error) return showAuthError(mapAuthError(error));
+  showAuthSuccess('Se l’email esiste, riceverai un link per reimpostare la password.');
+}
+
+async function resetPassword(){
+  const password = document.getElementById('resetPassword').value;
+  const password2 = document.getElementById('resetPassword2').value;
+  if (!password || password.length < 6) return showAuthError('La password deve avere almeno 6 caratteri');
+  if (password !== password2) return showAuthError('Le password non coincidono');
+  showLoading(true);
+  const { error } = await supabase.auth.updateUser({ password });
+  showLoading(false);
+  if (error) return showAuthError(mapAuthError(error));
+  showAuthSuccess('Password aggiornata. Ora puoi accedere.');
+  document.getElementById('authResetView').style.display = 'none';
+  document.getElementById('authLoginView').style.display = 'block';
+}
+
+async function logout(){
+  await supabase.auth.signOut();
+  leaveLeague();
+  showScreen('screenAuth');
+}
+
+function mapAuthError(err){
+  const m = (err.message || '').toLowerCase();
+  if (m.includes('invalid login') || m.includes('invalid credentials')) return 'Email o password non corretti';
+  if (m.includes('already registered') || m.includes('already exists')) return 'Email già registrata';
+  if (m.includes('email not confirmed')) return 'Conferma prima l’indirizzo email';
+  if (m.includes('network')) return 'Errore di rete. Riprova.';
+  return err.message || 'Errore di autenticazione';
+}
+function showAuthError(msg){
+  const el = document.getElementById('authError');
+  el.textContent = msg;
+  el.style.display = 'block';
+  document.getElementById('authSuccess').style.display = 'none';
+}
+function showAuthSuccess(msg){
+  const el = document.getElementById('authSuccess');
+  el.textContent = msg;
+  el.style.display = 'block';
+  document.getElementById('authError').style.display = 'none';
+}
+
+/* ============================================================
+   LEAGUES
+   ============================================================ */
+async function loadUserLeagues(){
+  if (!currentUser) return;
+  try {
+    const { data, error } = await supabase
+      .from('league_members')
+      .select('league_id, role, leagues(id, name)')
+      .eq('user_id', currentUser.id);
+    if (error) throw error;
+    userLeagues = (data || []).map(row => ({
+      league_id: row.league_id,
+      role: row.role,
+      league: row.leagues
+    }));
+    renderLeaguesList();
+  } catch (e) {
+    console.error(e);
+    document.getElementById('leaguesError').textContent = 'Impossibile caricare le leghe: ' + e.message;
+    document.getElementById('leaguesError').style.display = 'block';
+  }
+}
+
+function renderLeaguesList(){
+  const list = document.getElementById('leaguesList');
+  const empty = document.getElementById('leaguesEmpty');
+  if (!userLeagues.length) {
+    list.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = userLeagues.map(l => `
+    <div class="league-card" onclick="enterLeague('${l.league_id}', '${l.role}')">
+      <div class="role">${esc(l.role)}</div>
+      <h3>${esc(l.league?.name || 'Lega senza nome')}</h3>
+      <div class="league-meta">
+        <span>ID: ${esc(String(l.league_id).slice(0,8))}…</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function enterLeague(leagueId, role){
+  showLoading(true);
+  currentLeagueId = leagueId;
+  currentRole = role;
+  isGuestMode = false;
+  guestToken = null;
+  try {
+    await loadLeagueData(leagueId);
+    applyRoleUI();
+    showScreen('screenApp');
+    setSyncStatus('Connessa · dati della lega caricati', 'ok');
+  } catch (e) {
+    console.error(e);
+    toast('Errore nel caricamento della lega');
+    setSyncStatus('Errore: ' + e.message, 'error');
+  }
+  showLoading(false);
+}
+
+function leaveLeague(){
+  if (realtimeChannel) {
+    supabase.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+  currentLeagueId = null;
+  currentRole = null;
+  currentLeagueMeta = null;
+  db = { players: [], decks: [], matches: [], rounds: [], version: 2, league: { name: '' } };
+  isGuestMode = false;
+  guestToken = null;
+}
+
+async function enterGuestMode(token){
+  showLoading(true);
+  try {
+    const { data, error } = await supabase.rpc('read_league_by_guest_token', { guest_token: token });
+    if (error) throw error;
+    if (!data || !data.league) throw new Error('Link ospite non valido o scaduto');
+    isGuestMode = true;
+    guestToken = token;
+    currentLeagueId = data.league.id;
+    currentRole = 'guest';
+    currentLeagueMeta = data.league;
+    db.players = (data.players || []).map(r => ({ ...r.data, id: r.id }));
+    db.decks   = (data.decks   || []).map(r => ({ ...r.data, id: r.id }));
+    db.matches = (data.matches || []).map(r => ({ ...r.data, id: r.id }));
+    db.rounds  = (data.rounds  || []).map(r => ({ ...r.data, id: r.id }));
+    db.league  = { name: data.league.name || 'Lega' };
+    applyRoleUI();
+    renderAll();
+    showScreen('screenApp');
+    setSyncStatus('Modalità ospite · sola lettura', 'ok');
+  } catch (e) {
+    console.error(e);
+    showAuthError('Link ospite non valido, scaduto o revocato.');
+    showScreen('screenAuth');
+  }
+  showLoading(false);
+}
+
+/* ============================================================
+   DATA LAYER (scoped by league_id)
+   ============================================================ */
+async function loadLeagueData(leagueId){
+  const [pRes, dRes, mRes, rRes, lRes] = await Promise.all([
+    supabase.from('players').select('id, data').eq('league_id', leagueId),
+    supabase.from('decks').select('id, data').eq('league_id', leagueId),
+    supabase.from('matches').select('id, data').eq('league_id', leagueId),
+    supabase.from('rounds').select('id, data').eq('league_id', leagueId),
+    supabase.from('leagues').select('*').eq('id', leagueId).maybeSingle()
+  ]);
+  if (pRes.error) throw pRes.error;
+  if (dRes.error) throw dRes.error;
+  if (mRes.error) throw mRes.error;
+  if (rRes.error) throw rRes.error;
+
+  db.players = (pRes.data || []).map(r => ({ ...r.data, id: r.id }));
+  db.decks   = (dRes.data || []).map(r => ({ ...r.data, id: r.id }));
+  db.matches = (mRes.data || []).map(r => ({ ...r.data, id: r.id }));
+  db.rounds  = (rRes.data || []).map(r => ({ ...r.data, id: r.id }));
+  currentLeagueMeta = lRes.data || { id: leagueId, name: 'Lega' };
+  db.league = { name: currentLeagueMeta.name || 'Lega' };
+
+  document.getElementById('leagueTitle').textContent = db.league.name;
+  document.getElementById('leagueEyebrow').textContent = 'Lega';
+  document.getElementById('leagueSub').textContent = 'Matchup, classifica e statistiche';
+  document.getElementById('rolePill').textContent = currentRole || '—';
+
+  subscribeRealtime(leagueId);
+  renderAll();
+}
+
+function subscribeRealtime(leagueId){
+  if (realtimeChannel) supabase.removeChannel(realtimeChannel);
+  realtimeChannel = supabase.channel('league-' + leagueId)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `league_id=eq.${leagueId}` }, () => reloadTable('players'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'decks',   filter: `league_id=eq.${leagueId}` }, () => reloadTable('decks'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'matches', filter: `league_id=eq.${leagueId}` }, () => reloadTable('matches'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'rounds',  filter: `league_id=eq.${leagueId}` }, () => reloadTable('rounds'))
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') setSyncStatus('Sincronizzazione live attiva', 'ok');
+    });
+}
+
+async function reloadTable(table){
+  if (!currentLeagueId) return;
+  const { data, error } = await supabase.from(table).select('id, data').eq('league_id', currentLeagueId);
+  if (error) { console.error(error); return; }
+  db[table] = (data || []).map(r => ({ ...r.data, id: r.id }));
+  renderAll();
+  setSyncStatus('Dati aggiornati da un altro dispositivo', 'ok');
+}
+
+async function insertRecord(table, item){
+  if (!canWrite()) throw new Error('Permesso negato');
+  const row = { league_id: currentLeagueId, id: item.id, data: { ...item } };
+  delete row.data.id;
+  const { error } = await supabase.from(table).insert(row);
+  if (error) throw error;
+  db[table].push(item);
+}
+
+async function updateRecord(table, id, patch){
+  if (!canWrite()) throw new Error('Permesso negato');
+  const existing = db[table].find(x => x.id === id);
+  if (!existing) throw new Error('Record non trovato');
+  const newData = { ...existing, ...patch };
+  delete newData.id;
+  const { error } = await supabase.from(table).update({ data: newData }).eq('league_id', currentLeagueId).eq('id', id);
+  if (error) throw error;
+  Object.assign(existing, patch);
+}
+
+async function deleteRecord(table, id){
+  if (!canDelete()) throw new Error('Solo gli admin possono eliminare');
+  const { error } = await supabase.from(table).delete().eq('league_id', currentLeagueId).eq('id', id);
+  if (error) throw error;
+  db[table] = db[table].filter(x => x.id !== id);
+}
+
+/* ============================================================
+   ROLE UI
+   ============================================================ */
+function applyRoleUI(){
+  const isGuest = currentRole === 'guest';
+  document.getElementById('guestBanner').style.display = isGuest ? 'block' : 'none';
+  document.getElementById('btnBackLeagues').style.display = isGuest ? 'none' : '';
+
+  document.querySelectorAll('#mainNav button[data-role]').forEach(btn => {
+    const roles = (btn.dataset.role || '').split(',');
+    btn.style.display = roles.includes(currentRole) ? '' : 'none';
+  });
+
+  // Hide write UI for guests
+  const matchEntry = document.getElementById('matchEntryDetails');
+  if (matchEntry) matchEntry.style.display = canWrite() ? '' : 'none';
+  // Life counter tab already gated by data-role
+}
+
+/* ============================================================
+   INVITES & GUEST LINKS (admin)
+   ============================================================ */
+async function createInvite(){
+  if (!canAdmin()) return;
+  try {
+    const { data, error } = await supabase.rpc('create_league_invite', {
+      target_league: currentLeagueId,
+      invited_role: 'member'
+    });
+    if (error) throw error;
+    const token = data; // the raw token returned by the function
+    const link = window.location.origin + window.location.pathname + '?invite=' + encodeURIComponent(token);
+    document.getElementById('inviteLink').value = link;
+    document.getElementById('inviteResult').style.display = 'block';
+    toast('Invito creato');
+  } catch (e) {
+    toast('Errore: ' + e.message);
+  }
+}
+
+async function acceptInvite(token){
+  if (!token) {
+    token = (document.getElementById('inviteCodeInput')?.value || document.getElementById('inviteCodeInput2')?.value || '').trim();
+    // extract token from full URL if pasted
+    try {
+      const u = new URL(token);
+      token = u.searchParams.get('invite') || token;
+    } catch {}
+  }
+  if (!token) return toast('Inserisci un codice valido');
+  showLoading(true);
+  try {
+    const { error } = await supabase.rpc('accept_league_invite', { invite_token: token });
+    if (error) throw error;
+    toast('Invito accettato');
+    await loadUserLeagues();
+    // clean URL
+    const url = new URL(window.location.href);
+    url.searchParams.delete('invite');
+    window.history.replaceState({}, '', url.pathname + url.search);
+  } catch (e) {
+    toast('Invito non valido o scaduto: ' + e.message);
+  }
+  showLoading(false);
+}
+
+async function createGuestLink(){
+  if (!canAdmin()) return;
+  const days = Math.max(1, Math.min(365, Number(document.getElementById('guestDays').value) || 30));
+  try {
+    const { data, error } = await supabase.rpc('create_guest_link', {
+      target_league: currentLeagueId,
+      validity_days: days
+    });
+    if (error) throw error;
+    const token = data;
+    const link = window.location.origin + window.location.pathname + '?guest=' + encodeURIComponent(token);
+    document.getElementById('guestLink').value = link;
+    document.getElementById('guestResult').style.display = 'block';
+    toast('Link ospite creato');
+    loadGuestLinks();
+  } catch (e) {
+    toast('Errore: ' + e.message);
+  }
+}
+
+async function loadGuestLinks(){
+  if (!canAdmin() || !currentLeagueId) return;
+  try {
+    const { data, error } = await supabase.from('league_guest_links').select('*').eq('league_id', currentLeagueId);
+    if (error) throw error;
+    const el = document.getElementById('guestLinksList');
+    if (!data || !data.length) { el.innerHTML = '<p class="muted">Nessun link attivo.</p>'; return; }
+    el.innerHTML = '<h3 style="margin:12px 0 8px;font-size:14px">Link esistenti</h3>' + data.map(l => `
+      <div class="matchline" style="margin:8px 0;padding:8px 0;border-bottom:1px solid var(--line)">
+        <div class="mutedline">Creato ${esc((l.created_at||'').slice(0,10))} · scadenza ${(l.expires_at||'').slice(0,10) || '—'}</div>
+        <button class="dangerlink" onclick="revokeGuest('${l.id}')">Revoca</button>
+      </div>
+    `).join('');
+  } catch (e) { console.error(e); }
+}
+
+async function revokeGuest(linkId){
+  if (!confirm('Revocare questo link ospite?')) return;
+  try {
+    const { error } = await supabase.rpc('revoke_guest_link', { link_id: linkId });
+    if (error) throw error;
+    toast('Link revocato');
+    loadGuestLinks();
+  } catch (e) { toast('Errore: ' + e.message); }
+}
+
+async function loadMembers(){
+  if (!canAdmin() || !currentLeagueId) return;
+  try {
+    const { data, error } = await supabase
+      .from('league_members')
+      .select('user_id, role, created_at')
+      .eq('league_id', currentLeagueId);
+    if (error) throw error;
+    const el = document.getElementById('membersList');
+    el.innerHTML = (data || []).map(m => `
+      <div class="matchline" style="padding:8px 0;border-bottom:1px solid var(--line)">
+        <div><strong>${esc(m.user_id.slice(0,8))}…</strong><div class="mutedline">${esc(m.role)}</div></div>
+      </div>
+    `).join('') || '<p class="muted">Nessun membro.</p>';
+    document.getElementById('leagueInfo').innerHTML = `
+      <p><b>Nome:</b> ${esc(db.league.name)}</p>
+      <p class="mutedline">ID: ${esc(currentLeagueId)}</p>
+      <p class="mutedline">Giocatori: ${db.players.length} · Mazzi: ${db.decks.length} · Match: ${db.matches.length}</p>
+    `;
+  } catch (e) { console.error(e); }
+}
+
+/* ============================================================
+   CORE STATS & RENDER (preserved from original, adapted)
+   ============================================================ */
+function player(id){ return db.players.find(x => x.id === id)?.name || 'Giocatore eliminato'; }
+function deck(id){ return db.decks.find(x => x.id === id)?.name || 'Mazzo eliminato'; }
+function allMatches(){ return db.matches.slice().sort((a,b) => (b.date||'').localeCompare(a.date||'') || (b.createdAt||'').localeCompare(a.createdAt||'')); }
+function pct(a,b){ return b ? Math.round(a / b * 100) : 0; }
+
+function stats(){
+  return db.players.map(p => {
+    let ms = db.matches.filter(m => m.playerA === p.id || m.playerB === p.id);
+    let w=0,l=0,d=0,gw=0,gl=0;
+    ms.forEach(m => {
+      const a = m.playerA === p.id;
+      const draw = !!m.draw || m.gamesA === m.gamesB;
+      const won = a ? m.gamesA > m.gamesB : m.gamesB > m.gamesA;
+      if (draw) d++; else { w += won ? 1 : 0; l += won ? 0 : 1; }
+      gw += a ? m.gamesA : m.gamesB;
+      gl += a ? m.gamesB : m.gamesA;
+    });
+    return { ...p, played: ms.length, w, l, d, gw, gl, pct: pct(w, ms.length), points: w*3 + d };
+  }).sort((a,b) => b.points - a.points || b.pct - a.pct || b.gw - a.gw || a.name.localeCompare(b.name));
+}
+
+function deckStats(){
+  return db.decks.map(d => {
+    let played=0,w=0,l=0,draws=0,gw=0,gl=0;
+    db.matches.forEach(m => {
+      const a = m.deckA === d.id, b = m.deckB === d.id;
+      if (!a && !b) return;
+      played++;
+      const draw = !!m.draw || m.gamesA === m.gamesB;
+      if (a) { gw += m.gamesA; gl += m.gamesB; if (draw) draws++; else { w += m.gamesA > m.gamesB ? 1 : 0; l += m.gamesA > m.gamesB ? 0 : 1; } }
+      else { gw += m.gamesB; gl += m.gamesA; if (draw) draws++; else { w += m.gamesB > m.gamesA ? 1 : 0; l += m.gamesB > m.gamesA ? 0 : 1; } }
+    });
+    return { ...d, played, w, l, d: draws, gw, gl, matchPct: pct(w, played), gamePct: pct(gw, gw+gl) };
+  }).sort((a,b) => b.gamePct - a.gamePct || b.played - a.played);
+}
+
+function matchupStats(){
+  const map = {};
+  db.matches.forEach(m => {
+    const a = m.deckA, b = m.deckB;
+    if (!a || !b) return;
+    const key = [a,b].sort().join('|');
+    if (!map[key]) map[key] = { a: [a,b].sort()[0], b: [a,b].sort()[1], played: 0, aWins: 0, bWins: 0, mirror: a === b };
+    const s = map[key];
+    s.played++;
+    if (a === b) {
+      if (m.gamesA > m.gamesB) s.aWins++; else if (m.gamesB > m.gamesA) s.bWins++;
+    } else if (m.gamesA !== m.gamesB) {
+      const deckWon = m.gamesA > m.gamesB ? a : b;
+      if (deckWon === s.a) s.aWins++; else s.bWins++;
+    }
+  });
+  return Object.values(map);
+}
+
+function attendanceRounds(){ return (db.rounds || []).slice().sort((a,b) => Number(a.number) - Number(b.number) || (a.date||'').localeCompare(b.date||'')); }
+function attendeesFor(r){ return Array.isArray(r.attendees) ? r.attendees : []; }
+
+function attendanceStats(){
+  const rs = attendanceRounds();
+  const firstSeen = {};
+  rs.forEach(r => attendeesFor(r).forEach(id => { if (!firstSeen[id]) firstSeen[id] = r.number; }));
+  return db.players.map(p => {
+    const attended = rs.filter(r => attendeesFor(r).includes(p.id)).length;
+    const eligible = rs.filter(r => firstSeen[p.id] && Number(r.number) >= Number(firstSeen[p.id])).length;
+    return { ...p, attended, eligible, rate: pct(attended, eligible), lastDate: [...rs].reverse().find(r => attendeesFor(r).includes(p.id))?.date || null };
+  }).sort((a,b) => b.rate - a.rate || b.attended - a.attended || a.name.localeCompare(b.name));
+}
+
+function renderMetrics(){
+  const matches = db.matches.length;
+  const rs = attendanceRounds();
+  const last = rs[rs.length - 1];
+  const avg = rs.length ? Math.round(rs.reduce((s,r) => s + attendeesFor(r).length, 0) / rs.length) : 0;
+  document.getElementById('metrics').innerHTML = [
+    ['Archetipi', db.decks.length],
+    ['Match registrati', matches],
+    ['Presenze ultima giornata', last ? attendeesFor(last).length : '—'],
+    ['Presenze medie', rs.length ? avg : '—']
+  ].map(x => `<div class="metric"><div class="num">${x[1]}</div><div class="caption">${x[0]}</div></div>`).join('');
+}
+
+function renderStandings(){
+  const rows = stats();
+  document.getElementById('standings').innerHTML = rows.length
+    ? `<table><thead><tr><th>#</th><th>Giocatore</th><th>W-L-D</th><th>Game</th><th>Punti</th><th>Win%</th></tr></thead><tbody>${
+      rows.map((p,i) => `<tr><td class="rank">${i+1}</td><td><strong>${esc(p.name)}</strong></td><td>${p.w}-${p.l}-${p.d}</td><td>${p.gw}-${p.gl}</td><td><b>${p.points}</b></td><td>${p.pct}%</td></tr>`).join('')
+    }</tbody></table>`
+    : '<div class="empty">Aggiungi giocatori per iniziare.</div>';
+}
+
+function renderDeckBars(){
+  const rows = deckStats().filter(d => d.played);
+  document.getElementById('deckBars').innerHTML = rows.length
+    ? rows.map(d => `<div class="barrow"><span>${esc(d.name)}</span><div class="bar"><i style="width:${d.gamePct}%"></i></div><b>${d.gamePct}%</b></div>`).join('')
+    : '<div class="empty">Registra partite per vedere le percentuali.</div>';
+}
+
+function matchCard(m, deleteBtn = false){
+  return `<div class="card" style="padding:12px;margin-bottom:8px;background:#11192c">
+    <div class="matchline">
+      <div><b>${esc(player(m.playerA))}</b> <span class="muted">(${esc(deck(m.deckA))})</span>
+        <div class="mutedline">vs ${esc(player(m.playerB))} <span class="muted">(${esc(deck(m.deckB))})</span></div>
+      </div>
+      <div style="text-align:right">
+        <div class="result ${m.gamesA > m.gamesB ? 'win' : 'loss'}">${m.gamesA} – ${m.gamesB}</div>
+        <div class="mutedline">G${m.round} · ${esc(m.date || '')}</div>
+      </div>
+    </div>
+    ${m.notes ? `<div class="note">${esc(m.notes)}</div>` : ''}
+    ${deleteBtn && canDelete() ? `<div style="text-align:right"><button class="dangerlink" onclick="deleteMatch('${m.id}')">Elimina</button></div>` : ''}
+  </div>`;
+}
+
+function renderRecent(){
+  const ms = allMatches().slice(0, 4);
+  document.getElementById('recent').innerHTML = ms.length ? ms.map(m => matchCard(m)).join('') : '<div class="empty">Nessuna partita registrata.</div>';
+}
+
+function renderTopMatchups(){
+  const rows = matchupStats().sort((a,b) => b.played - a.played).slice(0, 5);
+  document.getElementById('topMatchups').innerHTML = rows.length
+    ? rows.map(s => `<div class="barrow"><span>${esc(deck(s.a))} <small>vs</small> ${esc(deck(s.b))}</span><div class="bar"><i style="width:${pct(s.aWins + s.bWins, s.played * 2)}%"></i></div><b>${s.played}x</b></div>`).join('')
+    : '<div class="empty">Nessun matchup registrato.</div>';
+}
+
+function fillSelect(id, items, placeholder){
+  const el = document.getElementById(id);
+  if (!el) return;
+  const old = el.value;
+  el.innerHTML = (placeholder ? `<option value="">${placeholder}</option>` : '') + items.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
+  if (items.some(x => x.id === old)) el.value = old;
+}
+
+function renderSelects(){
+  ['mA','mB'].forEach(id => fillSelect(id, db.players, 'Scegli giocatore'));
+  ['mDeckA','mDeckB'].forEach(id => fillSelect(id, db.decks, 'Scegli mazzo'));
+  const rounds = [...new Set(db.matches.map(m => Number(m.round)))].sort((a,b) => a - b);
+  const f = document.getElementById('filterRound');
+  if (f) {
+    const old = f.value;
+    f.innerHTML = '<option value="all">Tutte le giornate</option>' + rounds.map(r => `<option value="${r}">Giornata ${r}</option>`).join('');
+    f.value = rounds.includes(Number(old)) ? old : 'all';
+  }
+}
+
+function renderMatches(){
+  const val = document.getElementById('filterRound')?.value || 'all';
+  const ms = allMatches().filter(m => val === 'all' || String(m.round) === val);
+  document.getElementById('matchList').innerHTML = ms.length ? ms.map(m => matchCard(m, true)).join('') : '<div class="empty">Nessuna partita in questo filtro.</div>';
+}
+
+function clearPlayersDateFilter(){
+  document.getElementById('playersDateFrom').value = '';
+  document.getElementById('playersDateTo').value = '';
+  renderPlayers();
+}
+
+function renderPlayers(){
+  const from = document.getElementById('playersDateFrom')?.value || '';
+  const to = document.getElementById('playersDateTo')?.value || '';
+  let filtered = db.matches.filter(m => (!from || String(m.date||'') >= from) && (!to || String(m.date||'') <= to));
+  const rows = db.players.map(p => {
+    const ms = filtered.filter(m => m.playerA === p.id || m.playerB === p.id);
+    let w=0,l=0,d=0,gw=0,gl=0, deckCounts = {};
+    ms.forEach(m => {
+      const a = m.playerA === p.id;
+      const draw = !!m.draw || m.gamesA === m.gamesB;
+      const won = a ? m.gamesA > m.gamesB : m.gamesB > m.gamesA;
+      if (draw) d++; else if (won) w++; else l++;
+      gw += a ? m.gamesA : m.gamesB;
+      gl += a ? m.gamesB : m.gamesA;
+      const did = a ? m.deckA : m.deckB;
+      if (did) deckCounts[did] = (deckCounts[did] || 0) + 1;
+    });
+    const favorite = Object.entries(deckCounts).sort((a,b) => b[1] - a[1] || deck(a[0]).localeCompare(deck(b[0])))[0];
+    return { ...p, played: ms.length, w, l, d, gw, gl, pct: pct(w, ms.length), points: w*3+d, favoriteDeck: favorite ? deck(favorite[0]) : '—' };
+  }).sort((a,b) => b.points - a.points || b.pct - a.pct || b.gw - a.gw || a.name.localeCompare(b.name));
+
+  let html = rows.length
+    ? `<div class="tablewrap"><table><thead><tr><th>Giocatore</th><th>W-L-D</th><th>Game</th><th>Punti</th><th>Win%</th><th>Mazzo pref.</th>${canDelete()?'<th></th>':''}</tr></thead><tbody>${
+      rows.map(p => `<tr><td><strong>${esc(p.name)}</strong></td><td>${p.w}-${p.l}-${p.d}</td><td>${p.gw}-${p.gl}</td><td><b>${p.points}</b></td><td>${p.pct}%</td><td>${esc(p.favoriteDeck)}</td>${canDelete()?`<td><button class="dangerlink" onclick="deletePlayer('${p.id}')">Elimina</button></td>`:''}</tr>`).join('')
+    }</tbody></table></div>`
+    : '<div class="empty">Nessun giocatore.</div>';
+  if (from && to && from > to) html = '<div class="empty">La data iniziale deve precedere la data finale.</div>';
+  document.getElementById('playerList').innerHTML = html;
+}
+
+function renderDeckStats(){
+  const rows = deckStats();
+  document.getElementById('deckStats').innerHTML = rows.length
+    ? `<div class="tablewrap"><table><thead><tr><th>Mazzo</th><th>Match</th><th>W-L-D</th><th>Game</th><th>WIN%</th><th>Game%</th>${canDelete()?'<th></th>':''}</tr></thead><tbody>${
+      rows.map(d => `<tr><td><strong>${esc(d.name)}</strong></td><td>${d.played}</td><td>${d.w}-${d.l}-${d.d}</td><td>${d.gw}-${d.gl}</td><td>${d.matchPct}%</td><td>${d.gamePct}%</td>${canDelete()?`<td><button class="dangerlink" onclick="deleteDeck('${d.id}')">Elimina</button></td>`:''}</tr>`).join('')
+    }</tbody></table></div>`
+    : '<div class="empty">Aggiungi archetipi.</div>';
+}
+
+function matchupHeatColor(value){
+  const p = Math.max(0, Math.min(100, Number(value) || 0));
+  const stops = [{p:0,c:[248,105,107]},{p:50,c:[255,235,132]},{p:100,c:[99,190,123]}];
+  const i = p <= 50 ? 0 : 1;
+  const left = stops[i], right = stops[i+1];
+  const t = (p - left.p) / (right.p - left.p);
+  const rgb = left.c.map((v,j) => Math.round(v + (right.c[j] - v) * t));
+  return `rgb(${rgb.join(',')})`;
+}
+
+function renderMatrix(){
+  const ds = db.decks;
+  const ms = matchupStats();
+  if (!ds.length) { document.getElementById('matrix').innerHTML = '<div class="empty">Aggiungi mazzi per creare la matrice.</div>'; return; }
+  let html = '<div class="tablewrap"><table><thead><tr><th>Mazzo</th>' + ds.map(d => `<th>${esc(d.name)}</th>`).join('') + '</tr></thead><tbody>';
+  ds.forEach(a => {
+    html += `<tr><td><b>${esc(a.name)}</b></td>`;
+    ds.forEach(b => {
+      if (a.id === b.id) { html += '<td class="muted">—</td>'; return; }
+      const s = ms.find(x => x.a === [a.id,b.id].sort()[0] && x.b === [a.id,b.id].sort()[1]);
+      if (!s) { html += '<td class="muted">—</td>'; return; }
+      const wins = a.id === s.a ? s.aWins : s.bWins;
+      const rate = pct(wins, s.played);
+      const ink = (rate >= 25 && rate <= 75) ? '#202638' : '#ffffff';
+      html += `<td class="matchup-cell" style="background:${matchupHeatColor(rate)};color:${ink}"><b>${rate}%</b><div class="tiny" style="color:${ink};opacity:.95">${wins}/${s.played}</div></td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  document.getElementById('matrix').innerHTML = html;
+}
+
+function ensureRoundForMatch(match){
+  if (!Array.isArray(db.rounds)) db.rounds = [];
+  const date = match.date || new Date().toISOString().slice(0,10);
+  let round = db.rounds.find(r => r.date === date);
+  if (!round) {
+    let number = Number(match.round) || 0;
+    const conflict = db.rounds.some(r => Number(r.number) === number && r.date !== date);
+    if (!number || conflict) number = Math.max(0, ...db.rounds.map(r => Number(r.number)||0), ...db.matches.map(m => Number(m.round)||0)) + 1;
+    round = { id: uid('r'), number, date, notes: '', attendees: [], createdAt: new Date().toISOString() };
+    db.rounds.push(round);
+    // persist later
+  }
+  match.round = Number(round.number) || Number(match.round) || 1;
+  if (!Array.isArray(round.attendees)) round.attendees = [];
+  [match.playerA, match.playerB].filter(Boolean).forEach(id => {
+    if (!round.attendees.includes(id)) round.attendees.push(id);
+  });
+  return round;
+}
+
+function reconcileRoundsFromMatches(){
+  let changed = false;
+  for (const match of db.matches || []) {
+    const beforeCount = db.rounds.length;
+    const round = ensureRoundForMatch(match);
+    if (beforeCount !== db.rounds.length) changed = true;
+    const attendees = attendeesFor(round);
+    for (const id of [match.playerA, match.playerB].filter(Boolean)) {
+      if (!attendees.includes(id)) { round.attendees.push(id); changed = true; }
+    }
+  }
+  return changed;
+}
+
+function renderRounds(){
+  reconcileRoundsFromMatches();
+  const matchRounds = [...new Set(db.matches.map(m => Number(m.round)))];
+  const attendance = attendanceRounds();
+  const rs = [...new Set([...matchRounds, ...attendance.map(r => Number(r.number))])].sort((a,b) => a - b);
+  document.getElementById('roundStats').innerHTML = rs.length ? rs.map(n => {
+    const ms = db.matches.filter(m => Number(m.round) === n);
+    const r = attendance.find(x => Number(x.number) === n);
+    const gamesN = ms.reduce((s,m) => s + m.gamesA + m.gamesB, 0);
+    const present = attendeesFor(r || {});
+    return `<div class="card" style="margin:10px 0;background:#11192c">
+      <div class="section-head"><div><h2>Giornata ${n}</h2><div class="mutedline">${esc(r?.date || ms[0]?.date || 'Data non indicata')}</div></div>
+      <span class="pill">${present.length} presenti · ${ms.length} match · ${gamesN} game</span></div>
+      ${r ? `<div class="mutedline" style="margin-bottom:8px"><b>Presenze dai match:</b> ${present.map(player).map(esc).join(', ') || 'Nessuna'}</div>` : '<p class="note">Presenze non ancora registrate.</p>'}
+      ${ms.map(m => matchCard(m)).join('') || '<div class="empty">Nessuna partita registrata per questa giornata.</div>'}
+    </div>`;
+  }).join('') : '<div class="empty">Non ci sono giornate registrate.</div>';
+  renderAttendanceAnalytics();
+  renderPlayerAttendanceChart();
+}
+
+function renderPlayerAttendanceChart(){
+  const el = document.getElementById('playerAttendanceChart');
+  if (!el) return;
+  const rounds = attendanceRounds().slice().sort((a,b) => (a.date||'').localeCompare(b.date||'') || Number(a.number) - Number(b.number));
+  const series = rounds.map(r => {
+    const ids = new Set(attendeesFor(r));
+    if (!ids.size) (db.matches || []).filter(m => m.date === r.date).forEach(m => { if (m.playerA) ids.add(m.playerA); if (m.playerB) ids.add(m.playerB); });
+    return { round: r, count: ids.size };
+  });
+  if (!series.length) { el.innerHTML = '<div class="empty">Non ci sono ancora giornate da visualizzare.</div>'; return; }
+  const max = Math.max(1, ...series.map(x => x.count));
+  el.innerHTML = '<div class="attendance-chart">' + series.map(x => {
+    const height = Math.max(2, x.count / max * 100);
+    const label = x.round.date ? x.round.date.slice(5).replace('-','/') : ('G' + x.round.number);
+    return `<div class="attendance-chart-item" title="${esc(x.round.date || ('Giornata ' + x.round.number))}: ${x.count} giocatori">
+      <div class="attendance-chart-barwrap"><div class="attendance-chart-bar" style="height:${height}%"><span class="attendance-chart-count">${x.count}</span></div></div>
+      <div class="attendance-chart-label">${esc(label)}</div></div>`;
+  }).join('') + '</div><div class="note">' + series.length + ' giornate · picco: ' + Math.max(...series.map(x => x.count)) + ' giocatori</div>';
+}
+
+function renderAttendanceAnalytics(){
+  const rs = attendanceRounds();
+  const sum = document.getElementById('attendanceSummary');
+  const trend = document.getElementById('attendanceTrend');
+  const top = document.getElementById('loyaltyTop');
+  const table = document.getElementById('loyaltyTable');
+  if (!sum) return;
+  const last = rs[rs.length - 1];
+  const avg = rs.length ? rs.reduce((n,r) => n + attendeesFor(r).length, 0) / rs.length : 0;
+  const first = rs[0];
+  const change = first && last ? attendeesFor(last).length - attendeesFor(first).length : 0;
+  sum.innerHTML = `<div class="metrics" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+    <div class="metric"><div class="num">${rs.length}</div><div class="caption">Giornate con presenze registrate</div></div>
+    <div class="metric"><div class="num">${avg.toFixed(1)}</div><div class="caption">Presenze medie per giornata</div></div>
+    <div class="metric"><div class="num">${last ? attendeesFor(last).length : '—'}</div><div class="caption">Ultima affluenza</div></div>
+    <div class="metric"><div class="num">${rs.length > 1 ? (change > 0 ? '+' : '') + change : '—'}</div><div class="caption">Variazione dalla prima all’ultima</div></div>
+  </div>`;
+  trend.innerHTML = rs.length ? rs.map(r => `<div class="barrow"><span>G${r.number} <small>${esc(r.date||'')}</small></span><div class="bar"><i style="width:${pct(attendeesFor(r).length, Math.max(1, db.players.length))}%"></i></div><b>${attendeesFor(r).length}/${db.players.length}</b></div>`).join('') : '<div class="empty">Registra le presenze per misurare la crescita.</div>';
+  const loy = attendanceStats();
+  top.innerHTML = loy.filter(p => p.attended).slice(0,5).map(p => `<div class="barrow"><span>${esc(p.name)}</span><div class="bar"><i style="width:${p.rate}%"></i></div><b>${p.rate}%</b></div>`).join('') || '<div class="empty">Nessun dato di fidelizzazione.</div>';
+  table.innerHTML = loy.length ? `<div class="tablewrap"><table><thead><tr><th>Giocatore</th><th>Presenze</th><th>Giornate da prima presenza</th><th>Fidelizzazione</th><th>Ultima presenza</th></tr></thead><tbody>${
+    loy.map(p => `<tr><td><b>${esc(p.name)}</b></td><td>${p.attended}</td><td>${p.eligible}</td><td>${p.eligible ? p.rate + '%' : '—'}</td><td>${esc(p.lastDate || '—')}</td></tr>`).join('')
+  }</tbody></table></div>` : '';
+}
+
+function renderAll(){
+  renderMetrics();
+  renderStandings();
+  renderDeckBars();
+  renderRecent();
+  renderTopMatchups();
+  renderSelects();
+  renderMatches();
+  renderPlayers();
+  renderDeckStats();
+  renderMatrix();
+  renderRounds();
+  renderLifeSelects();
+  if (canAdmin()) { loadMembers(); loadGuestLinks(); }
+}
+
+/* ============================================================
+   LIFE COUNTER (preserved behaviour)
+   ============================================================ */
+let lifeMatch = null;
+let pauperWakeLock = null;
+let lcTimerInterval = null, lcTimerEndsAt = 0, lcExtraTurns = 0, lcTimerActive = false;
+let pendingAddPlayerSide = null;
+let lastLifeMove = null;
+let pendingLifeWinner = null;
+const lifeChangeState = { A: { sum: 0, sign: 0, timer: null }, B: { sum: 0, sign: 0, timer: null } };
+
+async function acquirePauperWakeLock(){
+  try {
+    if (!('wakeLock' in navigator) || pauperWakeLock || document.visibilityState !== 'visible') return;
+    pauperWakeLock = await navigator.wakeLock.request('screen');
+    pauperWakeLock.addEventListener('release', () => { pauperWakeLock = null; }, { once: true });
+  } catch (e) { console.warn(e); }
+}
+async function releasePauperWakeLock(){
+  const lock = pauperWakeLock;
+  pauperWakeLock = null;
+  if (lock) try { await lock.release(); } catch (e) {}
+}
+
+function renderLifeSelects(){
+  if (!document.getElementById('lcPlayerA')) return;
+  const a = document.getElementById('lcPlayerA'), b = document.getElementById('lcPlayerB');
+  const oa = a.value, ob = b.value;
+  const opts = '<option value="">Scegli giocatore</option>' +
+    db.players.slice().sort((x,y) => x.name.localeCompare(y.name)).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('') +
+    (canWrite() ? '<option value="__add__">＋ Aggiungi</option>' : '');
+  a.innerHTML = opts; b.innerHTML = opts;
+  if (db.players.some(p => p.id === oa)) a.value = oa;
+  if (db.players.some(p => p.id === ob)) b.value = ob;
+  renderLifeDisplay();
+}
+
+function handleLifePlayerChange(side){
+  const id = side === 'A' ? 'lcPlayerA' : 'lcPlayerB';
+  const select = document.getElementById(id);
+  if (!select || select.value !== '__add__') { renderLifeDisplay(); return; }
+  pendingAddPlayerSide = side;
+  document.getElementById('addPlayerName').value = '';
+  document.getElementById('addPlayerModal').classList.add('active');
+  document.getElementById('addPlayerName').focus();
+}
+
+function cancelPlayerFromLifeModal(){
+  if (pendingAddPlayerSide) document.getElementById(pendingAddPlayerSide === 'A' ? 'lcPlayerA' : 'lcPlayerB').value = '';
+  pendingAddPlayerSide = null;
+  document.getElementById('addPlayerModal').classList.remove('active');
+  renderLifeDisplay();
+}
+
+async function savePlayerFromLifeModal(){
+  if (!pendingAddPlayerSide || !canWrite()) return;
+  const input = document.getElementById('addPlayerName');
+  const clean = input.value.trim();
+  if (!clean) { input.focus(); return toast('Inserisci il nome del giocatore'); }
+  const side = pendingAddPlayerSide;
+  const selectId = side === 'A' ? 'lcPlayerA' : 'lcPlayerB';
+  let p = db.players.find(x => x.name.trim().toLowerCase() === clean.toLowerCase());
+  if (!p) {
+    p = { id: uid('p'), name: clean, createdAt: new Date().toISOString() };
+    try {
+      await insertRecord('players', p);
+      setSyncStatus('Giocatore salvato', 'ok');
+    } catch (e) { toast('Errore salvataggio: ' + e.message); return; }
+  }
+  renderLifeSelects();
+  document.getElementById(selectId).value = p.id;
+  pendingAddPlayerSide = null;
+  document.getElementById('addPlayerModal').classList.remove('active');
+  renderLifeDisplay();
+  toast(p ? 'Giocatore selezionato' : 'Giocatore aggiunto');
+}
+
+function renderLifeDisplay(){
+  if (!document.getElementById('lcLifeA')) return;
+  const a = document.getElementById('lcPlayerA').value;
+  const b = document.getElementById('lcPlayerB').value;
+  document.getElementById('lcNameA').textContent = player(a);
+  document.getElementById('lcNameB').textContent = player(b);
+  document.getElementById('lcLifeA').textContent = lifeMatch ? lifeMatch.lifeA : 20;
+  document.getElementById('lcLifeB').textContent = lifeMatch ? lifeMatch.lifeB : 20;
+  document.getElementById('lcWinsA').textContent = 'Game vinti: ' + (lifeMatch ? lifeMatch.gamesA : 0);
+  document.getElementById('lcWinsB').textContent = 'Game vinti: ' + (lifeMatch ? lifeMatch.gamesB : 0);
+  ['A','B'].forEach(side => {
+    const id = side === 'A' ? a : b;
+    const name = player(id);
+    const life = lifeMatch ? (side === 'A' ? lifeMatch.lifeA : lifeMatch.lifeB) : 20;
+    const wins = lifeMatch ? (side === 'A' ? lifeMatch.gamesA : lifeMatch.gamesB) : 0;
+    const n = document.getElementById('arenaName' + side);
+    const l = document.getElementById('arenaLife' + side);
+    const w = document.getElementById('arenaWins' + side);
+    if (n) n.textContent = name;
+    if (l) l.textContent = life;
+    if (w) w.textContent = 'Game vinti: ' + wins;
+  });
+  const status = document.getElementById('lcStatus');
+  const playersEl = document.getElementById('lifePlayers');
+  const start = document.getElementById('lcStartButton');
+  const note = document.getElementById('lcActiveNote');
+  const pendingResult = !!(lifeMatch && lifeMatch.finished);
+  ['lcSetupHeader','lcSetupHelp','lcSetupPlayers'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = lifeMatch ? 'none' : '';
+  });
+  if (lifeMatch) {
+    playersEl.classList.add('started');
+    start.textContent = 'Nuova partita';
+    start.disabled = pendingResult;
+    start.style.display = pendingResult ? 'none' : '';
+    note.style.display = 'block';
+    status.innerHTML = `<strong>Game ${lifeMatch.gamesA + lifeMatch.gamesB + 1} · ${esc(player(lifeMatch.playerA))} ${lifeMatch.gamesA}–${lifeMatch.gamesB} ${esc(player(lifeMatch.playerB))}</strong><span class="muted">${lifeMatch.finished ? 'Match concluso · salva il risultato per continuare' : 'Partita in corso'}</span>`;
+  } else {
+    start.disabled = false;
+    start.style.display = '';
+    playersEl.classList.remove('started');
+    note.style.display = 'none';
+    status.innerHTML = '<strong>Pronto per iniziare</strong><span class="muted">Seleziona due giocatori diversi.</span>';
+  }
+}
+
+function startLifeMatch(){
+  if (!canWrite()) return toast('Non hai i permessi per registrare partite');
+  if (lifeMatch && lifeMatch.finished) return toast('Salva o scarta il risultato prima di iniziare una nuova partita');
+  const a = document.getElementById('lcPlayerA').value;
+  const b = document.getElementById('lcPlayerB').value;
+  if (!a || !b) return toast('Seleziona entrambi i giocatori');
+  if (a === b) return toast('Scegli due giocatori diversi');
+  if (lifeMatch && !lifeMatch.finished && !confirm('Abbandonare il match in corso e iniziarne uno nuovo?')) return;
+  const today = new Date().toISOString().slice(0,10);
+  const allKnown = [...attendanceRounds().map(r => ({ number: Number(r.number), date: r.date })), ...db.matches.map(m => ({ number: Number(m.round)||0, date: m.date }))];
+  const sameDay = allKnown.filter(x => x.date === today).map(x => x.number);
+  const maxRound = Math.max(0, ...allKnown.map(x => x.number));
+  const autoRound = sameDay.length ? Math.max(...sameDay) : maxRound + 1;
+  document.getElementById('lifePlayers').style.display = '';
+  const timerSetup = document.getElementById('lcTimerSetup');
+  if (timerSetup) timerSetup.style.display = '';
+  lifeMatch = {
+    playerA: a, playerB: b, round: Math.max(1, autoRound), date: today,
+    lifeA: 20, lifeB: 20, gamesA: 0, gamesB: 0, finished: false,
+    timerMinutes: Number(document.getElementById('lcTimerMinutes')?.value || 0),
+    extraTurns: 0, draw: false
+  };
+  acquirePauperWakeLock();
+  renderLifeDisplay();
+  startLifeTimer();
+  openLifeArena();
+  toast('Match iniziato · segna vita a schermo intero');
+}
+
+function startLifeTimer(){
+  clearInterval(lcTimerInterval);
+  lcExtraTurns = 0; lcTimerActive = false;
+  const panel = document.getElementById('lcTimerPanel');
+  const turns = document.getElementById('lcTurnsPanel');
+  if (!lifeMatch || !lifeMatch.timerMinutes) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  turns.style.display = 'none';
+  document.getElementById('lcTimerLabel').textContent = 'Tempo';
+  lcTimerEndsAt = Date.now() + lifeMatch.timerMinutes * 60000;
+  lcTimerActive = true;
+  updateLifeTimer();
+  lcTimerInterval = setInterval(updateLifeTimer, 250);
+}
+
+function updateLifeTimer(){
+  if (!lifeMatch || lifeMatch.finished) { clearInterval(lcTimerInterval); return; }
+  const v = document.getElementById('lcTimerValue');
+  if (!lcTimerActive) return;
+  const remaining = Math.max(0, lcTimerEndsAt - Date.now());
+  if (v) v.textContent = String(Math.floor(remaining / 60000)).padStart(2,'0') + ':' + String(Math.floor((remaining % 60000) / 1000)).padStart(2,'0');
+  if (remaining <= 0) {
+    lcTimerActive = false;
+    clearInterval(lcTimerInterval);
+    lcExtraTurns = 0;
+    lifeMatch.extraTurns = 0;
+    document.getElementById('lcTimerLabel').textContent = 'Tempo scaduto';
+    document.getElementById('lcTurnsPanel').style.display = 'block';
+    document.getElementById('lcTurnValue').textContent = 'Turni supplementari: 0/5';
+    toast('Tempo scaduto · iniziano i 5 turni supplementari');
+  }
+}
+
+function recordExtraTurn(){
+  if (!lifeMatch || lifeMatch.finished || lcTimerActive) return;
+  if (lcExtraTurns < 5) {
+    lcExtraTurns++;
+    lifeMatch.extraTurns = lcExtraTurns;
+    document.getElementById('lcTurnValue').textContent = 'Turni supplementari: ' + lcExtraTurns + '/5';
+    if (lcExtraTurns === 5) toast('Contatore 5/5 · completate il quinto turno, poi premete di nuovo Turno per terminare');
+    return;
+  }
+  clearInterval(lcTimerInterval);
+  lifeMatch.finished = true;
+  lifeMatch.draw = lifeMatch.gamesA === lifeMatch.gamesB;
+  renderLifeDisplay();
+  closeLifeArena(true);
+  finishLifeMatch();
+  toast(lifeMatch.draw ? 'Quinto turno completato · partita in parità' : 'Quinto turno completato · partita terminata');
+}
+
+function openLifeArena(){
+  const arena = document.getElementById('lifeArena');
+  if (!arena) return;
+  arena.classList.add('active');
+  document.body.classList.add('arena-open');
+  renderLifeDisplay();
+  if (arena.requestFullscreen) {
+    const p = arena.requestFullscreen();
+    if (p && p.catch) p.catch(() => {});
+  }
+}
+
+function closeLifeArena(quiet = false){
+  const arena = document.getElementById('lifeArena');
+  if (arena) arena.classList.remove('active');
+  document.body.classList.remove('arena-open');
+  if (document.fullscreenElement && document.exitFullscreen) {
+    const p = document.exitFullscreen();
+    if (p && p.catch) p.catch(() => {});
+  }
+  if (!quiet && lifeMatch && !lifeMatch.finished) toast('Vista chiusa · match ancora attivo');
+}
+
+function showLifeChange(side, delta){
+  const state = lifeChangeState[side];
+  const sign = Math.sign(delta);
+  if (state.sign !== sign) { state.sum = 0; state.sign = sign; }
+  state.sum += delta;
+  clearTimeout(state.timer);
+  const value = (state.sum > 0 ? '+' : '') + state.sum;
+  const kind = delta > 0 ? 'pulse-gain' : 'pulse-loss';
+  ['lcChange' + side, 'arenaChange' + side].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = value;
+    el.classList.toggle('negative', state.sum < 0);
+    el.classList.add('visible');
+  });
+  const targets = [
+    document.querySelector('#lcLife' + side)?.closest('.life-player'),
+    document.getElementById('arenaLife' + side)?.closest('.arena-half')
+  ].filter(Boolean);
+  targets.forEach(el => {
+    el.classList.remove('pulse-gain', 'pulse-loss');
+    void el.offsetWidth;
+    el.classList.add(kind);
+  });
+  state.timer = setTimeout(() => {
+    ['lcChange' + side, 'arenaChange' + side].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('visible');
+    });
+    targets.forEach(el => el.classList.remove('pulse-gain', 'pulse-loss'));
+    state.sum = 0; state.sign = 0;
+  }, 900);
+}
+
+function resetLifeChangeIndicators(){
+  ['A','B'].forEach(side => {
+    const state = lifeChangeState[side];
+    clearTimeout(state.timer);
+    state.sum = 0; state.sign = 0;
+    ['lcChange' + side, 'arenaChange' + side].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.classList.remove('visible'); el.textContent = ''; }
+    });
+  });
+}
+
+function changeLife(side, delta){
+  if (!lifeMatch || lifeMatch.finished) return toast('Avvia prima una nuova partita');
+  if (pendingLifeWinner) return;
+  showLifeChange(side, delta);
+  const key = side === 'A' ? 'lifeA' : 'lifeB';
+  lastLifeMove = { key, previous: lifeMatch[key], side, delta };
+  lifeMatch[key] = Math.max(0, lifeMatch[key] + delta);
+  renderLifeDisplay();
+  if (lifeMatch[key] === 0) {
+    pendingLifeWinner = side === 'A' ? 'B' : 'A';
+    document.getElementById('lifeConfirmTitle').textContent = lifeMatch.gamesA + lifeMatch.gamesB === 2 ? 'Possibile fine match' : 'Possibile fine game';
+    document.getElementById('lifeConfirmText').textContent = player(side === 'A' ? lifeMatch.playerA : lifeMatch.playerB) + ' ha raggiunto zero vite. Confermi il game per ' + player(pendingLifeWinner === 'A' ? lifeMatch.playerA : lifeMatch.playerB) + '? Se è stato un errore puoi annullare l’ultima mossa.';
+    document.getElementById('lifeConfirm').classList.add('active');
+  }
+}
+
+function undoLastLifeMove(){
+  if (lastLifeMove && lifeMatch) lifeMatch[lastLifeMove.key] = lastLifeMove.previous;
+  pendingLifeWinner = null;
+  lastLifeMove = null;
+  document.getElementById('lifeConfirm').classList.remove('active');
+  renderLifeDisplay();
+}
+
+function confirmLifeGame(){
+  if (!pendingLifeWinner) return;
+  const winner = pendingLifeWinner;
+  pendingLifeWinner = null;
+  lastLifeMove = null;
+  document.getElementById('lifeConfirm').classList.remove('active');
+  awardLifeGame(winner);
+}
+
+function resetLifeGame(){
+  if (!lifeMatch || lifeMatch.finished) return toast('Nessun game attivo');
+  resetLifeChangeIndicators();
+  if (!confirm('Resettare le vite a 20-20 mantenendo il punteggio dei game?')) return;
+  pendingLifeWinner = null;
+  lastLifeMove = null;
+  document.getElementById('lifeConfirm').classList.remove('active');
+  lifeMatch.lifeA = 20;
+  lifeMatch.lifeB = 20;
+  renderLifeDisplay();
+}
+
+function awardLifeGame(winner){
+  if (!lifeMatch || lifeMatch.finished) return toast('Avvia prima una nuova partita');
+  resetLifeChangeIndicators();
+  pendingLifeWinner = null;
+  lastLifeMove = null;
+  document.getElementById('lifeConfirm').classList.remove('active');
+  if (winner === 'A') lifeMatch.gamesA++; else lifeMatch.gamesB++;
+  if (lifeMatch.gamesA >= 2 || lifeMatch.gamesB >= 2) {
+    lifeMatch.finished = true;
+    clearInterval(lcTimerInterval);
+    renderLifeDisplay();
+    closeLifeArena(true);
+    finishLifeMatch();
+  } else {
+    lifeMatch.lifeA = 20;
+    lifeMatch.lifeB = 20;
+    renderLifeDisplay();
+    toast('Game assegnato · vite resettate a 20');
+  }
+}
+
+function finishLifeMatch(){
+  if (!lifeMatch) return;
+  releasePauperWakeLock();
+  setLifeResultNavigationLock(true);
+  const m = lifeMatch;
+  const timerPanel = document.getElementById('lcTimerPanel');
+  if (timerPanel) timerPanel.style.display = 'none';
+  const timerSetup = document.getElementById('lcTimerSetup');
+  if (timerSetup) timerSetup.style.display = 'none';
+  const playerA = m.playerA, playerB = m.playerB;
+  const lifePlayers = document.getElementById('lifePlayers');
+  if (lifePlayers) lifePlayers.style.display = 'none';
+  const winner = m.gamesA > m.gamesB ? playerA : playerB;
+  const status = document.getElementById('lcStatus');
+  status.innerHTML = `<strong>${m.draw ? 'Match concluso in pareggio' : `Match concluso: ${esc(player(winner))} ha vinto`} ${m.gamesA}–${m.gamesB}</strong><span class="muted">Risultato finale · ${esc(player(playerA))} ${m.gamesA}–${m.gamesB} ${esc(player(playerB))}</span>`;
+  const form = `<div class="card" style="margin-top:12px" data-lc-final="1">
+    <h2>${m.draw ? 'Match concluso in pareggio' : `Match concluso: ${esc(player(playerA))} ${m.gamesA}–${m.gamesB} ${esc(player(playerB))}`}</h2>
+    <p class="muted" style="margin-bottom:12px">Seleziona gli archetipi usati.</p>
+    <div class="formgrid">
+      <div class="field"><label>Archetipo di ${esc(player(playerA))}</label>
+        <select id="lcFinalDeckA">${db.decks.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}<option value="__add__">＋ Aggiungi</option></select>
+      </div>
+      <div class="field"><label>Archetipo di ${esc(player(playerB))}</label>
+        <select id="lcFinalDeckB">${db.decks.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}<option value="__add__">＋ Aggiungi</option></select>
+      </div>
+      <div class="field full"><label for="lcNewDeckName">Aggiungi un nuovo archetipo</label>
+        <div style="display:flex;gap:8px;align-items:stretch">
+          <input id="lcNewDeckName" type="text" maxlength="60" autocomplete="off" placeholder="Es. Mono Blue Terror" style="flex:1;min-width:0">
+          <button type="button" onclick="addFinalDeckInline()">＋ Aggiungi</button>
+        </div>
+      </div>
+    </div>
+    <div class="actions"><button onclick="saveLifeMatch()">Salva risultato</button></div>
+  </div>`;
+  document.querySelectorAll('[data-lc-final="1"]').forEach(x => x.remove());
+  const statusCard = status.closest('.life-setup-status');
+  if (statusCard) {
+    statusCard.insertAdjacentHTML('afterend', form);
+    statusCard.style.display = 'none';
+  } else {
+    status.insertAdjacentHTML('afterend', form);
+  }
+  document.getElementById('lcFinalDeckA')?.addEventListener('change', () => handleFinalDeckChange('A'));
+  document.getElementById('lcFinalDeckB')?.addEventListener('change', () => handleFinalDeckChange('B'));
+  toast('Match concluso · scegli gli archetipi');
+}
+
+function handleFinalDeckChange(side){
+  const id = side === 'A' ? 'lcFinalDeckA' : 'lcFinalDeckB';
+  const select = document.getElementById(id);
+  if (!select || select.value !== '__add__') return;
+  pendingAddDeckSide = side;
+  document.getElementById('addDeckName').value = '';
+  document.getElementById('addDeckModal').classList.add('active');
+  setTimeout(() => document.getElementById('addDeckName').focus(), 200);
+}
+
+let pendingAddDeckSide = null;
+function cancelDeckFromLifeModal(){
+  if (pendingAddDeckSide) {
+    const select = document.getElementById(pendingAddDeckSide === 'A' ? 'lcFinalDeckA' : 'lcFinalDeckB');
+    if (select) select.value = db.decks[0]?.id || '';
+  }
+  pendingAddDeckSide = null;
+  document.getElementById('addDeckModal').classList.remove('active');
+}
+
+async function saveDeckFromLifeModal(){
+  if (!pendingAddDeckSide || !canWrite()) return;
+  const input = document.getElementById('addDeckName');
+  const clean = input.value.trim();
+  if (!clean) { input.focus(); return toast('Inserisci il nome dell’archetipo'); }
+  let d = db.decks.find(x => x.name.trim().toLowerCase() === clean.toLowerCase());
+  if (!d) {
+    d = { id: uid('d'), name: clean, createdAt: new Date().toISOString() };
+    try { await insertRecord('decks', d); } catch (e) { toast('Errore: ' + e.message); return; }
+  }
+  ['lcFinalDeckA','lcFinalDeckB'].forEach(selId => {
+    const el = document.getElementById(selId);
+    if (el && !Array.from(el.options).some(o => o.value === d.id)) {
+      const opt = document.createElement('option');
+      opt.value = d.id; opt.textContent = d.name;
+      const add = Array.from(el.options).find(o => o.value === '__add__');
+      el.insertBefore(opt, add || null);
+    }
+  });
+  const current = document.getElementById(pendingAddDeckSide === 'A' ? 'lcFinalDeckA' : 'lcFinalDeckB');
+  if (current) current.value = d.id;
+  pendingAddDeckSide = null;
+  document.getElementById('addDeckModal').classList.remove('active');
+  toast('Archetipo aggiunto');
+}
+
+async function addFinalDeckInline(){
+  const input = document.getElementById('lcNewDeckName');
+  if (!input || !canWrite()) return;
+  const clean = input.value.trim();
+  if (!clean) return toast('Inserisci il nome dell’archetipo');
+  let d = db.decks.find(x => x.name.trim().toLowerCase() === clean.toLowerCase());
+  if (!d) {
+    d = { id: uid('d'), name: clean, createdAt: new Date().toISOString() };
+    try { await insertRecord('decks', d); } catch (e) { toast('Errore: ' + e.message); return; }
+  }
+  ['lcFinalDeckA','lcFinalDeckB'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel && !Array.from(sel.options).some(o => o.value === d.id)) {
+      const opt = document.createElement('option');
+      opt.value = d.id; opt.textContent = d.name;
+      sel.appendChild(opt);
+    }
+  });
+  input.value = '';
+  toast(d ? 'Archetipo già presente' : 'Archetipo aggiunto');
+}
+
+function setLifeResultNavigationLock(locked){
+  document.querySelectorAll('.nav button').forEach(button => {
+    const isLifeCounter = button.dataset.tab === 'lifecounter';
+    button.disabled = !!locked && !isLifeCounter;
+    button.style.opacity = locked && !isLifeCounter ? '.45' : '';
+    button.style.cursor = locked && !isLifeCounter ? 'not-allowed' : '';
+  });
+}
+
+async function saveLifeMatch(){
+  if (!lifeMatch || !canWrite()) return;
+  const isDraw = lifeMatch.gamesA === lifeMatch.gamesB;
+  const playerA = lifeMatch.playerA;
+  const playerB = lifeMatch.playerB;
+  const deckA = document.getElementById('lcFinalDeckA')?.value || '';
+  const deckB = document.getElementById('lcFinalDeckB')?.value || '';
+  if (!playerA || !playerB || playerA === playerB) { alert('I giocatori della partita non sono validi.'); return; }
+  if (!deckA || !deckB || !db.decks.some(d => d.id === deckA) || !db.decks.some(d => d.id === deckB)) {
+    alert('Seleziona l’archetipo utilizzato da entrambi i giocatori.');
+    return;
+  }
+  const m = {
+    id: uid('m'),
+    round: Number(lifeMatch.round) || 1,
+    date: lifeMatch.date || new Date().toISOString().slice(0,10),
+    playerA, deckA, playerB, deckB,
+    gamesA: Number(lifeMatch.gamesA),
+    gamesB: Number(lifeMatch.gamesB),
+    draw: isDraw,
+    notes: 'Registrata dal segna vita',
+    createdAt: new Date().toISOString()
+  };
+  try {
+    ensureRoundForMatch(m);
+    // persist round if new
+    const round = db.rounds.find(r => r.date === m.date);
+    if (round) {
+      const exists = await supabase.from('rounds').select('id').eq('league_id', currentLeagueId).eq('id', round.id).maybeSingle();
+      if (!exists.data) await insertRecord('rounds', round);
+      else await updateRecord('rounds', round.id, { attendees: round.attendees, number: round.number });
+    }
+    await insertRecord('matches', m);
+    lifeMatch = null;
+    setLifeResultNavigationLock(false);
+    renderAll();
+    document.querySelectorAll('[data-lc-final="1"]').forEach(x => x.remove());
+    const statusCard = document.querySelector('.life-setup-status');
+    if (statusCard) statusCard.style.display = '';
+    const lifePlayers = document.getElementById('lifePlayers');
+    if (lifePlayers) lifePlayers.style.display = '';
+    const timerSetup = document.getElementById('lcTimerSetup');
+    if (timerSetup) timerSetup.style.display = '';
+    renderLifeDisplay();
+    setSyncStatus('Partita salvata', 'ok');
+    alert(isDraw ? 'Pareggio registrato correttamente.' : 'Partita registrata correttamente.');
+  } catch (e) {
+    console.error(e);
+    toast('Errore salvataggio: ' + e.message);
+  }
+}
+
+/* ============================================================
+   MATCH FORM / CRUD
+   ============================================================ */
+document.getElementById('matchForm')?.addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!canWrite()) return toast('Permesso negato');
+  const m = {
+    id: uid('m'),
+    round: Number(document.getElementById('mRound').value),
+    date: document.getElementById('mDate').value,
+    playerA: document.getElementById('mA').value,
+    deckA: document.getElementById('mDeckA').value,
+    playerB: document.getElementById('mB').value,
+    deckB: document.getElementById('mDeckB').value,
+    gamesA: Number(document.getElementById('mScoreA').value),
+    gamesB: Number(document.getElementById('mScoreB').value),
+    notes: document.getElementById('mNotes').value.trim(),
+    createdAt: new Date().toISOString()
+  };
+  if (!m.playerA || !m.playerB || !m.deckA || !m.deckB) return toast('Completa giocatori e mazzi');
+  if (m.playerA === m.playerB) return toast('Scegli due giocatori diversi');
+  if (!([2,1,0].includes(m.gamesA) && [2,1,0].includes(m.gamesB)) || m.gamesA === m.gamesB || Math.max(m.gamesA, m.gamesB) !== 2 || m.gamesA + m.gamesB < 2)
+    return toast('Punteggio non valido: 2-0, 2-1, 1-2 o 0-2');
+  try {
+    ensureRoundForMatch(m);
+    const round = db.rounds.find(r => r.date === m.date);
+    if (round) {
+      const exists = await supabase.from('rounds').select('id').eq('league_id', currentLeagueId).eq('id', round.id).maybeSingle();
+      if (!exists.data) await insertRecord('rounds', round);
+      else await updateRecord('rounds', round.id, { attendees: round.attendees, number: round.number });
+    }
+    await insertRecord('matches', m);
+    document.getElementById('mNotes').value = '';
+    renderAll();
+    toast('Partita registrata');
+    document.querySelector('[data-tab="matches"]')?.click();
+  } catch (err) {
+    toast('Errore: ' + err.message);
+  }
+});
+
+function resetMatchForm(){
+  document.getElementById('matchForm').reset();
+  document.getElementById('mDate').value = new Date().toISOString().slice(0,10);
+}
+
+async function deleteMatch(id){
+  if (!canDelete()) return toast('Solo gli admin possono eliminare');
+  if (!confirm('Eliminare questa partita?')) return;
+  try {
+    await deleteRecord('matches', id);
+    renderAll();
+    toast('Partita eliminata');
+  } catch (e) { toast('Errore: ' + e.message); }
+}
+
+async function deletePlayer(id){
+  if (!canDelete()) return;
+  if (db.matches.some(m => m.playerA === id || m.playerB === id))
+    return alert('Questo giocatore ha partite nello storico. Non si può eliminare finché ha match registrati.');
+  if (!confirm('Eliminare ' + player(id) + '?')) return;
+  try {
+    await deleteRecord('players', id);
+    renderAll();
+  } catch (e) { toast('Errore: ' + e.message); }
+}
+
+async function deleteDeck(id){
+  if (!canDelete()) return;
+  if (db.matches.some(m => m.deckA === id || m.deckB === id))
+    return alert('Questo mazzo compare nello storico. Non puoi eliminarlo finché esistono partite associate.');
+  if (!confirm('Eliminare ' + deck(id) + '?')) return;
+  try {
+    await deleteRecord('decks', id);
+    renderAll();
+  } catch (e) { toast('Errore: ' + e.message); }
+}
+
+/* ============================================================
+   BACKUP (admin only)
+   ============================================================ */
+function exportData(){
+  if (!canAdmin()) return toast('Solo gli admin possono esportare');
+  const payload = {
+    version: 2,
+    league: { id: currentLeagueId, name: db.league.name },
+    exportedAt: new Date().toISOString(),
+    players: db.players,
+    decks: db.decks,
+    matches: db.matches,
+    rounds: db.rounds
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'pauper-league-backup-' + (db.league.name || 'league').replace(/\s+/g,'-') + '-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Backup esportato');
+}
+
+async function importData(e){
+  if (!canAdmin()) return;
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = async () => {
+    try {
+      const x = JSON.parse(r.result);
+      if (!Array.isArray(x.players) || !Array.isArray(x.decks) || !Array.isArray(x.matches)) throw new Error('Struttura non valida');
+      if (!confirm(`Importare il backup?\nGiocatori: ${x.players.length}\nMazzi: ${x.decks.length}\nMatch: ${x.matches.length}\n\nI dati correnti della lega verranno sostituiti.`)) return;
+      showLoading(true);
+      // Delete existing then insert (scoped to league)
+      for (const table of ['matches','rounds','players','decks']) {
+        const { data: existing } = await supabase.from(table).select('id').eq('league_id', currentLeagueId);
+        for (const row of (existing || [])) {
+          await supabase.from(table).delete().eq('league_id', currentLeagueId).eq('id', row.id);
+        }
+      }
+      for (const p of x.players) await insertRecord('players', p);
+      for (const d of x.decks) await insertRecord('decks', d);
+      for (const m of x.matches) await insertRecord('matches', m);
+      for (const r of (x.rounds || [])) await insertRecord('rounds', r);
+      await loadLeagueData(currentLeagueId);
+      toast('Backup importato');
+    } catch (err) {
+      alert('File non valido: ' + err.message);
+    }
+    showLoading(false);
+    e.target.value = '';
+  };
+  r.readAsText(f);
+}
+
+async function clearAll(){
+  if (!canAdmin()) return;
+  if (!confirm('Cancellare TUTTI i dati di questa lega? Operazione irreversibile.')) return;
+  if (!confirm('Confermi davvero la cancellazione completa della lega corrente?')) return;
+  showLoading(true);
+  try {
+    for (const table of ['matches','rounds','players','decks']) {
+      const { data: existing } = await supabase.from(table).select('id').eq('league_id', currentLeagueId);
+      for (const row of (existing || [])) {
+        await supabase.from(table).delete().eq('league_id', currentLeagueId).eq('id', row.id);
+      }
+    }
+    db = { players: [], decks: [], matches: [], rounds: [], version: 2, league: db.league };
+    renderAll();
+    toast('Dati della lega cancellati');
+  } catch (e) {
+    toast('Errore: ' + e.message);
+  }
+  showLoading(false);
+}
+
+/* ============================================================
+   NAV & EVENTS
+   ============================================================ */
+document.querySelectorAll('.nav button').forEach(b => b.addEventListener('click', e => {
+  if (lifeMatch && lifeMatch.finished && b.dataset.tab !== 'lifecounter') {
+    e.preventDefault();
+    toast('Salva il risultato della partita prima di cambiare scheda');
+    return;
+  }
+  document.querySelectorAll('.nav button').forEach(x => x.classList.toggle('active', x === b));
+  document.querySelectorAll('.tabscontent').forEach(x => x.classList.toggle('show', x.id === b.dataset.tab));
+  if (b.dataset.tab === 'admin') { loadMembers(); loadGuestLinks(); }
+}));
+
+document.querySelectorAll('[data-round-pane]').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-round-pane]').forEach(x => x.classList.toggle('active', x === b));
+  document.querySelectorAll('.round-pane').forEach(x => x.classList.toggle('active', x.id === (b.dataset.roundPane === 'trend' ? 'roundTrendPane' : 'roundResultsPane')));
+}));
+
+document.getElementById('lcPlayerA')?.addEventListener('change', () => handleLifePlayerChange('A'));
+document.getElementById('lcPlayerB')?.addEventListener('change', () => handleLifePlayerChange('B'));
+
+document.getElementById('btnGoogle')?.addEventListener('click', loginWithGoogle);
+document.getElementById('btnLogin')?.addEventListener('click', loginWithEmail);
+document.getElementById('btnRegister')?.addEventListener('click', registerWithEmail);
+document.getElementById('btnForgot')?.addEventListener('click', forgotPassword);
+document.getElementById('btnReset')?.addEventListener('click', resetPassword);
+document.getElementById('btnLogout')?.addEventListener('click', logout);
+document.getElementById('btnBackLeagues')?.addEventListener('click', () => { leaveLeague(); showScreen('screenLeagues'); });
+document.getElementById('btnShowRegister')?.addEventListener('click', () => {
+  document.getElementById('authLoginView').style.display = 'none';
+  document.getElementById('authRegisterView').style.display = 'block';
+  document.getElementById('authError').style.display = 'none';
+});
+document.getElementById('btnShowLogin')?.addEventListener('click', () => {
+  document.getElementById('authRegisterView').style.display = 'none';
+  document.getElementById('authLoginView').style.display = 'block';
+});
+document.getElementById('btnShowForgot')?.addEventListener('click', () => {
+  document.getElementById('authLoginView').style.display = 'none';
+  document.getElementById('authForgotView').style.display = 'block';
+});
+document.getElementById('btnBackLogin')?.addEventListener('click', () => {
+  document.getElementById('authForgotView').style.display = 'none';
+  document.getElementById('authLoginView').style.display = 'block';
+});
+document.getElementById('btnAcceptInvite')?.addEventListener('click', () => acceptInvite());
+document.getElementById('btnAcceptInvite2')?.addEventListener('click', () => acceptInvite());
+document.getElementById('btnCreateInvite')?.addEventListener('click', createInvite);
+document.getElementById('btnCreateGuest')?.addEventListener('click', createGuestLink);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && lifeMatch && !lifeMatch.finished) acquirePauperWakeLock();
+});
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && document.getElementById('lifeArena')?.classList.contains('active'))
+    document.body.classList.add('arena-open');
+});
+
+// Init date
+if (document.getElementById('mDate')) document.getElementById('mDate').value = new Date().toISOString().slice(0,10);
+
+// Boot
+initAuth();
+</script>
+</body>
+</html>
