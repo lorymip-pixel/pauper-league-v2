@@ -641,15 +641,28 @@ body.arena-open{overflow:hidden}
    CONFIGURAZIONE SUPABASE — INSERISCI QUI LA PUBLISHABLE KEY
    ============================================================ */
 const SUPABASE_URL = 'https://wowebgqwpbpyfckknkxk.supabase.co';
-const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_V0EgZSL9Gq6sbvr65iV4Pg_9gyFV5x9'; // <-- sostituisci
+// Sostituisci con la Publishable key del progetto (Settings → API → Publishable key / anon key)
+const SUPABASE_PUBLISHABLE_KEY = 'INSERISCI_QUI_LA_PUBLISHABLE_KEY';
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true
+let supabase = null;
+try {
+  if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+    throw new Error('Libreria Supabase non caricata (CDN). Controlla la connessione o il blocco degli script.');
   }
-});
+  if (!SUPABASE_PUBLISHABLE_KEY || SUPABASE_PUBLISHABLE_KEY === 'INSERISCI_QUI_LA_PUBLISHABLE_KEY' || SUPABASE_PUBLISHABLE_KEY.length < 20) {
+    throw new Error('Publishable key non configurata. Apri index.html e inserisci la chiave del progetto Supabase.');
+  }
+  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  });
+} catch (bootErr) {
+  console.error('[Pauper League] Avvio fallito:', bootErr);
+  window.__PAUPER_BOOT_ERROR__ = bootErr.message || String(bootErr);
+}
 
 /* ============================================================
    STATO APPLICAZIONE
@@ -683,66 +696,113 @@ function showScreen(id){
   if (el) el.classList.add('active');
 }
 function showLoading(show){
-  document.getElementById('loadingOverlay').classList.toggle('hidden', !show);
+  const el = document.getElementById('loadingOverlay');
+  if (el) el.classList.toggle('hidden', !show);
 }
 function canWrite(){ return currentRole === 'admin' || currentRole === 'member'; }
 function canAdmin(){ return currentRole === 'admin'; }
 function canDelete(){ return currentRole === 'admin'; }
+
+function showFatalBootError(msg){
+  showLoading(false);
+  showScreen('screenAuth');
+  const err = document.getElementById('authError');
+  if (err) {
+    err.style.display = 'block';
+    err.innerHTML = '<strong>Impossibile avviare l’app</strong><br>' + esc(msg) +
+      '<br><br><small>Apri la console del browser (F12) per dettagli tecnici.</small>';
+  }
+  const overlay = document.getElementById('loadingOverlay');
+  if (overlay) {
+    overlay.innerHTML = '<div style="max-width:420px;text-align:center;padding:24px">' +
+      '<div style="color:#ff9ba3;font-weight:700;margin-bottom:12px">Errore di configurazione</div>' +
+      '<div style="color:#c8d4ec;font-size:14px;line-height:1.5">' + esc(msg) + '</div>' +
+      '<button style="margin-top:18px" onclick="location.reload()">Ricarica</button></div>';
+    overlay.classList.remove('hidden');
+  }
+}
 
 /* ============================================================
    AUTH
    ============================================================ */
 async function initAuth(){
   showLoading(true);
-  // Guest token from URL?
-  const params = new URLSearchParams(window.location.search);
-  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  guestToken = params.get('guest') || hashParams.get('guest') || null;
-  const inviteToken = params.get('invite') || hashParams.get('invite') || null;
 
-  // Handle password recovery
-  if (window.location.hash.includes('type=recovery') || params.get('type') === 'recovery') {
-    showScreen('screenAuth');
-    document.getElementById('authLoginView').style.display = 'none';
-    document.getElementById('authRegisterView').style.display = 'none';
-    document.getElementById('authForgotView').style.display = 'none';
-    document.getElementById('authResetView').style.display = 'block';
+  // Timeout di sicurezza: non lasciare mai lo spinner infinito
+  const safety = setTimeout(() => {
+    console.warn('[Pauper League] Timeout avvio');
     showLoading(false);
-    return;
-  }
-
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session) {
-    currentSession = session;
-    currentUser = session.user;
-    if (inviteToken) {
-      await acceptInvite(inviteToken);
+    if (!document.querySelector('.screen.active')) {
+      showFatalBootError('Il caricamento ha impiegato troppo tempo. Controlla la Publishable key e la connessione a Supabase.');
     }
-    await loadUserLeagues();
-    showScreen('screenLeagues');
-  } else if (guestToken) {
-    await enterGuestMode(guestToken);
-  } else {
-    showScreen('screenAuth');
-  }
-  showLoading(false);
+  }, 12000);
 
-  supabase.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && session) {
+  try {
+    if (window.__PAUPER_BOOT_ERROR__ || !supabase) {
+      throw new Error(window.__PAUPER_BOOT_ERROR__ || 'Client Supabase non inizializzato');
+    }
+
+    // Guest token from URL?
+    const params = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    guestToken = params.get('guest') || hashParams.get('guest') || null;
+    const inviteToken = params.get('invite') || hashParams.get('invite') || null;
+
+    // Handle password recovery
+    if (window.location.hash.includes('type=recovery') || params.get('type') === 'recovery') {
+      showScreen('screenAuth');
+      document.getElementById('authLoginView').style.display = 'none';
+      document.getElementById('authRegisterView').style.display = 'none';
+      document.getElementById('authForgotView').style.display = 'none';
+      document.getElementById('authResetView').style.display = 'block';
+      clearTimeout(safety);
+      showLoading(false);
+      return;
+    }
+
+    const sessionResult = await Promise.race([
+      supabase.auth.getSession(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout connessione a Supabase (getSession)')), 10000))
+    ]);
+    const session = sessionResult?.data?.session || null;
+
+    if (session) {
       currentSession = session;
       currentUser = session.user;
-      isGuestMode = false;
-      guestToken = null;
+      if (inviteToken) {
+        try { await acceptInvite(inviteToken); } catch (e) { console.warn(e); }
+      }
       await loadUserLeagues();
       showScreen('screenLeagues');
-    } else if (event === 'SIGNED_OUT') {
-      currentUser = null;
-      currentSession = null;
-      userLeagues = [];
-      leaveLeague();
+    } else if (guestToken) {
+      await enterGuestMode(guestToken);
+    } else {
       showScreen('screenAuth');
     }
-  });
+
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        currentSession = session;
+        currentUser = session.user;
+        isGuestMode = false;
+        guestToken = null;
+        await loadUserLeagues();
+        showScreen('screenLeagues');
+      } else if (event === 'SIGNED_OUT') {
+        currentUser = null;
+        currentSession = null;
+        userLeagues = [];
+        leaveLeague();
+        showScreen('screenAuth');
+      }
+    });
+  } catch (err) {
+    console.error('[Pauper League] initAuth:', err);
+    showFatalBootError(err.message || String(err));
+  } finally {
+    clearTimeout(safety);
+    showLoading(false);
+  }
 }
 
 async function loginWithGoogle(){
