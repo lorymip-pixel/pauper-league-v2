@@ -640,11 +640,11 @@ body.arena-open{overflow:hidden}
 /* ============================================================
    CONFIGURAZIONE SUPABASE — INSERISCI QUI LA PUBLISHABLE KEY
    ============================================================ */
-const SUPABASE_URL = 'https://wowebgqwpbpyfckknkxk.supabase.co';
+const SUPABASE_URL = 'https://wowebgqwpbpyfckknkxk.sb.co';
 // Sostituisci con la Publishable key del progetto (Settings → API → Publishable key / anon key)
-const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_V0EgZSL9Gq6sbvr65iV4Pg_9gyFV5x9';
+const SUPABASE_PUBLISHABLE_KEY = 'INSERISCI_QUI_LA_PUBLISHABLE_KEY';
 
-let supabase = null;
+let sb = null; // client (il nome "supabase" è già usato dal CDN)
 try {
   if (!window.supabase || typeof window.supabase.createClient !== 'function') {
     throw new Error('Libreria Supabase non caricata (CDN). Controlla la connessione o il blocco degli script.');
@@ -652,7 +652,7 @@ try {
   if (!SUPABASE_PUBLISHABLE_KEY || SUPABASE_PUBLISHABLE_KEY === 'INSERISCI_QUI_LA_PUBLISHABLE_KEY' || SUPABASE_PUBLISHABLE_KEY.length < 20) {
     throw new Error('Publishable key non configurata. Apri index.html e inserisci la chiave del progetto Supabase.');
   }
-  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -738,7 +738,7 @@ async function initAuth(){
   }, 12000);
 
   try {
-    if (window.__PAUPER_BOOT_ERROR__ || !supabase) {
+    if (window.__PAUPER_BOOT_ERROR__ || !sb) {
       throw new Error(window.__PAUPER_BOOT_ERROR__ || 'Client Supabase non inizializzato');
     }
 
@@ -761,7 +761,7 @@ async function initAuth(){
     }
 
     const sessionResult = await Promise.race([
-      supabase.auth.getSession(),
+      sb.auth.getSession(),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout connessione a Supabase (getSession)')), 10000))
     ]);
     const session = sessionResult?.data?.session || null;
@@ -780,7 +780,7 @@ async function initAuth(){
       showScreen('screenAuth');
     }
 
-    supabase.auth.onAuthStateChange(async (event, session) => {
+    sb.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
         currentSession = session;
         currentUser = session.user;
@@ -806,7 +806,7 @@ async function initAuth(){
 }
 
 async function loginWithGoogle(){
-  const { error } = await supabase.auth.signInWithOAuth({
+  const { error } = await sb.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo: window.location.origin + window.location.pathname }
   });
@@ -818,7 +818,7 @@ async function loginWithEmail(){
   const password = document.getElementById('loginPassword').value;
   if (!email || !password) return showAuthError('Inserisci email e password');
   showLoading(true);
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { error } = await sb.auth.signInWithPassword({ email, password });
   showLoading(false);
   if (error) showAuthError(mapAuthError(error));
 }
@@ -831,7 +831,7 @@ async function registerWithEmail(){
   if (password.length < 6) return showAuthError('La password deve avere almeno 6 caratteri');
   if (password !== password2) return showAuthError('Le password non coincidono');
   showLoading(true);
-  const { data, error } = await supabase.auth.signUp({
+  const { data, error } = await sb.auth.signUp({
     email,
     password,
     options: { emailRedirectTo: window.location.origin + window.location.pathname }
@@ -851,7 +851,7 @@ async function forgotPassword(){
   const email = document.getElementById('forgotEmail').value.trim();
   if (!email) return showAuthError('Inserisci l’email');
   showLoading(true);
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
     redirectTo: window.location.origin + window.location.pathname
   });
   showLoading(false);
@@ -865,7 +865,7 @@ async function resetPassword(){
   if (!password || password.length < 6) return showAuthError('La password deve avere almeno 6 caratteri');
   if (password !== password2) return showAuthError('Le password non coincidono');
   showLoading(true);
-  const { error } = await supabase.auth.updateUser({ password });
+  const { error } = await sb.auth.updateUser({ password });
   showLoading(false);
   if (error) return showAuthError(mapAuthError(error));
   showAuthSuccess('Password aggiornata. Ora puoi accedere.');
@@ -874,7 +874,7 @@ async function resetPassword(){
 }
 
 async function logout(){
-  await supabase.auth.signOut();
+  await sb.auth.signOut();
   leaveLeague();
   showScreen('screenAuth');
 }
@@ -965,7 +965,7 @@ async function enterLeague(leagueId, role){
 
 function leaveLeague(){
   if (realtimeChannel) {
-    supabase.removeChannel(realtimeChannel);
+    sb.removeChannel(realtimeChannel);
     realtimeChannel = null;
   }
   currentLeagueId = null;
@@ -979,7 +979,7 @@ function leaveLeague(){
 async function enterGuestMode(token){
   showLoading(true);
   try {
-    const { data, error } = await supabase.rpc('read_league_by_guest_token', { guest_token: token });
+    const { data, error } = await sb.rpc('read_league_by_guest_token', { guest_token: token });
     if (error) throw error;
     if (!data || !data.league) throw new Error('Link ospite non valido o scaduto');
     isGuestMode = true;
@@ -1009,11 +1009,11 @@ async function enterGuestMode(token){
    ============================================================ */
 async function loadLeagueData(leagueId){
   const [pRes, dRes, mRes, rRes, lRes] = await Promise.all([
-    supabase.from('players').select('id, data').eq('league_id', leagueId),
-    supabase.from('decks').select('id, data').eq('league_id', leagueId),
-    supabase.from('matches').select('id, data').eq('league_id', leagueId),
-    supabase.from('rounds').select('id, data').eq('league_id', leagueId),
-    supabase.from('leagues').select('*').eq('id', leagueId).maybeSingle()
+    sb.from('players').select('id, data').eq('league_id', leagueId),
+    sb.from('decks').select('id, data').eq('league_id', leagueId),
+    sb.from('matches').select('id, data').eq('league_id', leagueId),
+    sb.from('rounds').select('id, data').eq('league_id', leagueId),
+    sb.from('leagues').select('*').eq('id', leagueId).maybeSingle()
   ]);
   if (pRes.error) throw pRes.error;
   if (dRes.error) throw dRes.error;
@@ -1037,8 +1037,8 @@ async function loadLeagueData(leagueId){
 }
 
 function subscribeRealtime(leagueId){
-  if (realtimeChannel) supabase.removeChannel(realtimeChannel);
-  realtimeChannel = supabase.channel('league-' + leagueId)
+  if (realtimeChannel) sb.removeChannel(realtimeChannel);
+  realtimeChannel = sb.channel('league-' + leagueId)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `league_id=eq.${leagueId}` }, () => reloadTable('players'))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'decks',   filter: `league_id=eq.${leagueId}` }, () => reloadTable('decks'))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'matches', filter: `league_id=eq.${leagueId}` }, () => reloadTable('matches'))
@@ -1050,7 +1050,7 @@ function subscribeRealtime(leagueId){
 
 async function reloadTable(table){
   if (!currentLeagueId) return;
-  const { data, error } = await supabase.from(table).select('id, data').eq('league_id', currentLeagueId);
+  const { data, error } = await sb.from(table).select('id, data').eq('league_id', currentLeagueId);
   if (error) { console.error(error); return; }
   db[table] = (data || []).map(r => ({ ...r.data, id: r.id }));
   renderAll();
@@ -1061,7 +1061,7 @@ async function insertRecord(table, item){
   if (!canWrite()) throw new Error('Permesso negato');
   const row = { league_id: currentLeagueId, id: item.id, data: { ...item } };
   delete row.data.id;
-  const { error } = await supabase.from(table).insert(row);
+  const { error } = await sb.from(table).insert(row);
   if (error) throw error;
   db[table].push(item);
 }
@@ -1072,14 +1072,14 @@ async function updateRecord(table, id, patch){
   if (!existing) throw new Error('Record non trovato');
   const newData = { ...existing, ...patch };
   delete newData.id;
-  const { error } = await supabase.from(table).update({ data: newData }).eq('league_id', currentLeagueId).eq('id', id);
+  const { error } = await sb.from(table).update({ data: newData }).eq('league_id', currentLeagueId).eq('id', id);
   if (error) throw error;
   Object.assign(existing, patch);
 }
 
 async function deleteRecord(table, id){
   if (!canDelete()) throw new Error('Solo gli admin possono eliminare');
-  const { error } = await supabase.from(table).delete().eq('league_id', currentLeagueId).eq('id', id);
+  const { error } = await sb.from(table).delete().eq('league_id', currentLeagueId).eq('id', id);
   if (error) throw error;
   db[table] = db[table].filter(x => x.id !== id);
 }
@@ -1109,7 +1109,7 @@ function applyRoleUI(){
 async function createInvite(){
   if (!canAdmin()) return;
   try {
-    const { data, error } = await supabase.rpc('create_league_invite', {
+    const { data, error } = await sb.rpc('create_league_invite', {
       target_league: currentLeagueId,
       invited_role: 'member'
     });
@@ -1136,7 +1136,7 @@ async function acceptInvite(token){
   if (!token) return toast('Inserisci un codice valido');
   showLoading(true);
   try {
-    const { error } = await supabase.rpc('accept_league_invite', { invite_token: token });
+    const { error } = await sb.rpc('accept_league_invite', { invite_token: token });
     if (error) throw error;
     toast('Invito accettato');
     await loadUserLeagues();
@@ -1154,7 +1154,7 @@ async function createGuestLink(){
   if (!canAdmin()) return;
   const days = Math.max(1, Math.min(365, Number(document.getElementById('guestDays').value) || 30));
   try {
-    const { data, error } = await supabase.rpc('create_guest_link', {
+    const { data, error } = await sb.rpc('create_guest_link', {
       target_league: currentLeagueId,
       validity_days: days
     });
@@ -1173,7 +1173,7 @@ async function createGuestLink(){
 async function loadGuestLinks(){
   if (!canAdmin() || !currentLeagueId) return;
   try {
-    const { data, error } = await supabase.from('league_guest_links').select('*').eq('league_id', currentLeagueId);
+    const { data, error } = await sb.from('league_guest_links').select('*').eq('league_id', currentLeagueId);
     if (error) throw error;
     const el = document.getElementById('guestLinksList');
     if (!data || !data.length) { el.innerHTML = '<p class="muted">Nessun link attivo.</p>'; return; }
@@ -1189,7 +1189,7 @@ async function loadGuestLinks(){
 async function revokeGuest(linkId){
   if (!confirm('Revocare questo link ospite?')) return;
   try {
-    const { error } = await supabase.rpc('revoke_guest_link', { link_id: linkId });
+    const { error } = await sb.rpc('revoke_guest_link', { link_id: linkId });
     if (error) throw error;
     toast('Link revocato');
     loadGuestLinks();
@@ -2057,7 +2057,7 @@ async function saveLifeMatch(){
     // persist round if new
     const round = db.rounds.find(r => r.date === m.date);
     if (round) {
-      const exists = await supabase.from('rounds').select('id').eq('league_id', currentLeagueId).eq('id', round.id).maybeSingle();
+      const exists = await sb.from('rounds').select('id').eq('league_id', currentLeagueId).eq('id', round.id).maybeSingle();
       if (!exists.data) await insertRecord('rounds', round);
       else await updateRecord('rounds', round.id, { attendees: round.attendees, number: round.number });
     }
@@ -2108,7 +2108,7 @@ document.getElementById('matchForm')?.addEventListener('submit', async e => {
     ensureRoundForMatch(m);
     const round = db.rounds.find(r => r.date === m.date);
     if (round) {
-      const exists = await supabase.from('rounds').select('id').eq('league_id', currentLeagueId).eq('id', round.id).maybeSingle();
+      const exists = await sb.from('rounds').select('id').eq('league_id', currentLeagueId).eq('id', round.id).maybeSingle();
       if (!exists.data) await insertRecord('rounds', round);
       else await updateRecord('rounds', round.id, { attendees: round.attendees, number: round.number });
     }
@@ -2195,9 +2195,9 @@ async function importData(e){
       showLoading(true);
       // Delete existing then insert (scoped to league)
       for (const table of ['matches','rounds','players','decks']) {
-        const { data: existing } = await supabase.from(table).select('id').eq('league_id', currentLeagueId);
+        const { data: existing } = await sb.from(table).select('id').eq('league_id', currentLeagueId);
         for (const row of (existing || [])) {
-          await supabase.from(table).delete().eq('league_id', currentLeagueId).eq('id', row.id);
+          await sb.from(table).delete().eq('league_id', currentLeagueId).eq('id', row.id);
         }
       }
       for (const p of x.players) await insertRecord('players', p);
@@ -2222,9 +2222,9 @@ async function clearAll(){
   showLoading(true);
   try {
     for (const table of ['matches','rounds','players','decks']) {
-      const { data: existing } = await supabase.from(table).select('id').eq('league_id', currentLeagueId);
+      const { data: existing } = await sb.from(table).select('id').eq('league_id', currentLeagueId);
       for (const row of (existing || [])) {
-        await supabase.from(table).delete().eq('league_id', currentLeagueId).eq('id', row.id);
+        await sb.from(table).delete().eq('league_id', currentLeagueId).eq('id', row.id);
       }
     }
     db = { players: [], decks: [], matches: [], rounds: [], version: 2, league: db.league };
