@@ -642,7 +642,7 @@ body.arena-open{overflow:hidden}
    ============================================================ */
 const SUPABASE_URL = 'https://wowebgqwpbpyfckknkxk.supabase.co';
 // Sostituisci con la Publishable key del progetto (Settings → API → Publishable key / anon key)
-const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_V0EgZSL9Gq6sbvr65iV4Pg_9gyFV5x9';
+const SUPABASE_PUBLISHABLE_KEY = 'INSERISCI_QUI_LA_PUBLISHABLE_KEY';
 
 let sb = null; // client (il nome "supabase" è già usato dal CDN)
 try {
@@ -905,22 +905,52 @@ function showAuthSuccess(msg){
    ============================================================ */
 async function loadUserLeagues(){
   if (!currentUser) return;
+  const errBox = document.getElementById('leaguesError');
+  if (errBox) { errBox.style.display = 'none'; errBox.textContent = ''; }
   try {
-    const { data, error } = await supabase
+    let data = null;
+    let error = null;
+    // Prova con join sulla FK; se non c'è relazione configurata, fallback senza embed
+    let res = await sb
       .from('league_members')
       .select('league_id, role, leagues(id, name)')
       .eq('user_id', currentUser.id);
-    if (error) throw error;
-    userLeagues = (data || []).map(row => ({
-      league_id: row.league_id,
-      role: row.role,
-      league: row.leagues
-    }));
+    data = res.data; error = res.error;
+    if (error) {
+      console.warn('[Pauper League] join leagues fallita, fallback:', error.message);
+      res = await sb
+        .from('league_members')
+        .select('league_id, role')
+        .eq('user_id', currentUser.id);
+      data = res.data; error = res.error;
+      if (error) throw error;
+      // carica nomi leghe a parte
+      const ids = [...new Set((data || []).map(r => r.league_id).filter(Boolean))];
+      let leagueMap = {};
+      if (ids.length) {
+        const lr = await sb.from('leagues').select('id, name').in('id', ids);
+        if (lr.error) throw lr.error;
+        (lr.data || []).forEach(l => { leagueMap[l.id] = l; });
+      }
+      userLeagues = (data || []).map(row => ({
+        league_id: row.league_id,
+        role: row.role,
+        league: leagueMap[row.league_id] || { id: row.league_id, name: 'Lega' }
+      }));
+    } else {
+      userLeagues = (data || []).map(row => ({
+        league_id: row.league_id,
+        role: row.role,
+        league: row.leagues || { id: row.league_id, name: 'Lega' }
+      }));
+    }
     renderLeaguesList();
   } catch (e) {
     console.error(e);
-    document.getElementById('leaguesError').textContent = 'Impossibile caricare le leghe: ' + e.message;
-    document.getElementById('leaguesError').style.display = 'block';
+    if (errBox) {
+      errBox.textContent = 'Impossibile caricare le leghe: ' + (e.message || e);
+      errBox.style.display = 'block';
+    }
   }
 }
 
@@ -1199,7 +1229,7 @@ async function revokeGuest(linkId){
 async function loadMembers(){
   if (!canAdmin() || !currentLeagueId) return;
   try {
-    const { data, error } = await supabase
+    const { data, error } = await sb
       .from('league_members')
       .select('user_id, role, created_at')
       .eq('league_id', currentLeagueId);
