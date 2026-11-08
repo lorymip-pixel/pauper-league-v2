@@ -1246,7 +1246,7 @@ async function loadLeagueData(leagueId){
   renderLeagueBranding();
   document.getElementById('leagueEyebrow').textContent = 'Lega';
   document.getElementById('leagueSub').textContent = 'Matchup, classifica e statistiche';
-  document.getElementById('rolePill').textContent = currentRole || '—';
+  document.getElementById('rolePill').textContent = currentRole === 'guest' ? 'Visitor' : (currentRole || '—');
 
   subscribeRealtime(leagueId);
   renderAll();
@@ -1305,6 +1305,7 @@ async function deleteRecord(table, id){
    ============================================================ */
 function applyRoleUI(){
   const isGuest = currentRole === 'guest';
+  document.getElementById('rolePill').textContent = isGuest ? 'Visitor' : (currentRole || '—');
   document.getElementById('guestBanner').style.display = isGuest ? 'block' : 'none';
   document.getElementById('btnBackLeagues').style.display = isGuest ? 'none' : '';
 
