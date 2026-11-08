@@ -313,6 +313,26 @@ body.arena-open{overflow:hidden}
         <button class="secondary" id="btnLogout">Esci</button>
       </div>
     </header>
+    <div id="platformAdminPanel" class="card" style="display:none;margin-bottom:18px">
+      <h2>Gestione amministratori</h2>
+      <p class="muted">Genera un invito monouso: il destinatario potrà creare una sola lega e diventarne admin.</p>
+      <div class="inline-add" style="margin-top:12px">
+        <input id="adminInviteDays" type="number" min="1" max="30" value="7" aria-label="Validità in giorni" style="max-width:110px">
+        <button id="btnCreateAdminInvite">Crea invito admin</button>
+      </div>
+      <div id="adminInviteResult" style="display:none;margin-top:12px">
+        <label for="adminInviteLink">Link da condividere</label>
+        <div class="inline-add"><input id="adminInviteLink" readonly><button id="btnCopyAdminInvite">Copia</button></div>
+      </div>
+      <div id="adminInviteStatus" class="muted" style="margin-top:8px" aria-live="polite"></div>
+    </div>
+    <div id="newAdminLeaguePanel" class="card" style="display:none;margin-bottom:18px">
+      <h2>Crea la tua lega</h2>
+      <p class="muted">Il tuo invito admin consente di creare una sola lega. Dopo la creazione ne sarai amministratore.</p>
+      <div class="field"><label for="newAdminLeagueName">Nome della nuova lega</label><input id="newAdminLeagueName" maxlength="80" placeholder="Es. Pauper League Trento"></div>
+      <button id="btnClaimAdminLeague">Crea lega</button>
+      <div id="newAdminLeagueStatus" class="muted" style="margin-top:8px" aria-live="polite"></div>
+    </div>
     <div id="leaguesError" class="error-box" style="display:none"></div>
     <div id="leaguesEmpty" class="card" style="display:none;text-align:center;padding:32px 20px">
       <h2 style="margin-bottom:10px">Nessuna lega ancora</h2>
@@ -793,6 +813,8 @@ async function initAuth(){
     const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
     guestToken = params.get('guest') || hashParams.get('guest') || null;
     const inviteToken = params.get('invite') || hashParams.get('invite') || null;
+    const adminInviteToken = params.get('admin_invite') || hashParams.get('admin_invite') || null;
+    if (adminInviteToken) sessionStorage.setItem('pauper_admin_invite', adminInviteToken);
 
     // Handle password recovery
     if (window.location.hash.includes('type=recovery') || params.get('type') === 'recovery') {
@@ -819,6 +841,7 @@ async function initAuth(){
         try { await acceptInvite(inviteToken); } catch (e) { console.warn(e); }
       }
       await loadUserLeagues();
+      await refreshPlatformAdminUI();
       showScreen('screenLeagues');
     } else if (guestToken) {
       await enterGuestMode(guestToken);
@@ -846,6 +869,7 @@ async function initAuth(){
           isGuestMode = false;
           guestToken = null;
           await loadUserLeagues();
+          await refreshPlatformAdminUI();
           if (currentUser?.id === session.user.id) showScreen('screenLeagues');
         }, 0);
       } else if (event === 'SIGNED_OUT') {
@@ -1007,6 +1031,7 @@ async function loadUserLeagues(){
       }));
     }
     renderLeaguesList();
+    await refreshPlatformAdminUI();
   } catch (e) {
     console.error(e);
     if (errBox) {
@@ -1014,6 +1039,67 @@ async function loadUserLeagues(){
       errBox.style.display = 'block';
     }
   }
+}
+
+async function refreshPlatformAdminUI(){
+  const adminPanel = document.getElementById('platformAdminPanel');
+  const claimPanel = document.getElementById('newAdminLeaguePanel');
+  if (!adminPanel || !claimPanel) return;
+  adminPanel.style.display = 'none';
+  claimPanel.style.display = 'none';
+  if (!currentUser || !sb) return;
+  try {
+    const { data, error } = await sb.rpc('is_platform_super_admin');
+    if (!error && data === true) adminPanel.style.display = 'block';
+  } catch(e) { console.warn('Verifica super admin:', e); }
+  const token = sessionStorage.getItem('pauper_admin_invite');
+  if (token) {
+    claimPanel.style.display = 'block';
+    const url = new URL(window.location.href);
+    url.searchParams.delete('admin_invite');
+    window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+  }
+}
+
+async function createAdminInvite(){
+  const btn = document.getElementById('btnCreateAdminInvite');
+  const status = document.getElementById('adminInviteStatus');
+  const days = Number(document.getElementById('adminInviteDays').value);
+  if (!Number.isInteger(days) || days < 1 || days > 30) return toast('Validità da 1 a 30 giorni');
+  btn.disabled = true;
+  status.textContent = 'Creazione invito…';
+  try {
+    const {data,error} = await sb.rpc('create_platform_admin_invite', {validity_days: days});
+    if (error) throw error;
+    const url = new URL(window.location.origin + window.location.pathname);
+    url.searchParams.set('admin_invite', String(data));
+    document.getElementById('adminInviteLink').value = url.toString();
+    document.getElementById('adminInviteResult').style.display = 'block';
+    status.textContent = 'Invito creato. Il link può essere utilizzato una sola volta.';
+  } catch(e) { status.textContent = 'Errore: ' + (e.message || e); }
+  finally { btn.disabled = false; }
+}
+
+async function claimAdminLeague(){
+  const token = sessionStorage.getItem('pauper_admin_invite');
+  const name = document.getElementById('newAdminLeagueName').value.trim();
+  const status = document.getElementById('newAdminLeagueStatus');
+  if (!token) return toast('Invito non trovato');
+  if (!name || name.length > 80) return toast('Inserisci un nome (max 80 caratteri)');
+  const btn = document.getElementById('btnClaimAdminLeague');
+  btn.disabled = true;
+  status.textContent = 'Creazione lega…';
+  try {
+    const {data,error} = await sb.rpc('redeem_platform_admin_invite', {invite_token:token, league_name:name});
+    if (error) throw error;
+    sessionStorage.removeItem('pauper_admin_invite');
+    document.getElementById('newAdminLeaguePanel').style.display = 'none';
+    status.textContent = '';
+    await loadUserLeagues();
+    toast('Lega creata: ora ne sei admin');
+    if (data) await enterLeague(String(data), 'admin');
+  } catch(e) { status.textContent = 'Errore: ' + (e.message || e); }
+  finally { btn.disabled = false; }
 }
 
 function renderLeaguesList(){
@@ -2602,6 +2688,13 @@ document.getElementById('btnRegister')?.addEventListener('click', registerWithEm
 document.getElementById('btnForgot')?.addEventListener('click', forgotPassword);
 document.getElementById('btnReset')?.addEventListener('click', resetPassword);
 document.getElementById('btnLogout')?.addEventListener('click', logout);
+document.getElementById('btnCreateAdminInvite')?.addEventListener('click', createAdminInvite);
+document.getElementById('btnClaimAdminLeague')?.addEventListener('click', claimAdminLeague);
+document.getElementById('btnCopyAdminInvite')?.addEventListener('click', async () => {
+  const input = document.getElementById('adminInviteLink');
+  try { await navigator.clipboard.writeText(input.value); toast('Link copiato'); }
+  catch(e) { input.select(); toast('Seleziona e copia il link'); }
+});
 document.getElementById('btnBackLeagues')?.addEventListener('click', () => { leaveLeague(); showScreen('screenLeagues'); });
 document.getElementById('btnShowRegister')?.addEventListener('click', () => {
   document.getElementById('authLoginView').style.display = 'none';
