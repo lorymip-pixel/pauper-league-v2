@@ -184,6 +184,9 @@ body.arena-open{overflow:hidden}
 .match-entry[open] .match-entry-icon{transform:rotate(45deg)}
 .match-entry form{margin-top:16px}
 
+.life-mode-choice{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.life-mode-choice button{min-height:48px}
+.life-mode-choice button.active{background:var(--accent);color:#111827;border:1px solid var(--accent)}
 /* Auth & multi-league screens */
 .screen{display:none;min-height:100vh;padding:24px 16px}
 .screen.active{display:block}
@@ -362,6 +365,14 @@ body.arena-open{overflow:hidden}
     <div class="card span12">
       <div id="lcSetupHeader" class="section-head"><h2>Segna vita · partita al meglio delle 3</h2><span class="pill">20 vite iniziali</span></div>
       <p id="lcSetupHelp" class="muted" style="margin-bottom:14px">Seleziona i due sfidanti. Se un giocatore non è presente nella lista, scegli ＋ Aggiungi in fondo alla tendina. Data, giornata e presenze vengono registrate automaticamente al salvataggio del match.</p>
+      <div id="lcModeSelector" class="field" style="margin:12px 0 16px">
+        <label>Modalità partita</label>
+        <div class="life-mode-choice" role="group" aria-label="Modalità partita">
+          <button type="button" id="lcModeBO3" class="active" aria-pressed="true" onclick="selectLifeMode('BO3')">BO3 · Lega</button>
+          <button type="button" id="lcModeBO1" class="secondary" aria-pressed="false" onclick="selectLifeMode('BO1')">BO1 · For fun</button>
+        </div>
+        <p id="lcModeHelp" class="note">BO3: risultato valido per la lega, con giocatori e salvataggio obbligatorio.</p>
+      </div>
       <div id="lcSetupPlayers" class="formgrid" style="margin-top:12px">
         <div class="field"><label>Giocatore A</label><select id="lcPlayerA"></select></div>
         <div class="field"><label>Giocatore B</label><select id="lcPlayerB"></select></div>
@@ -397,7 +408,7 @@ body.arena-open{overflow:hidden}
       </div>
       <div class="card span12 life-setup-status" style="margin-top:12px">
         <div id="lcStatus" class="matchline"><strong>Pronto per iniziare</strong><span class="muted">Seleziona due giocatori diversi.</span></div>
-        <div class="actions"><button id="lcStartButton" onclick="startLifeMatch()">Nuova partita</button></div>
+        <div class="actions"><button id="lcStartButton" onclick="startLifeMatch()">Nuova partita</button><button id="lcEndCasualButton" class="secondary" style="display:none" onclick="discardCasualLifeMatch()">Termina BO1</button></div>
         <p id="lcActiveNote" class="note" style="display:none">Partita in corso. Per assegnare un game su concessione usa i pulsanti dedicati nel contatore a schermo intero.</p>
       </div>
     </div>
@@ -994,6 +1005,7 @@ async function enterLeague(leagueId, role){
 }
 
 function leaveLeague(){
+  if (lifeMatch?.mode === 'BO1') discardCasualLifeMatch();
   if (realtimeChannel) {
     sb.removeChannel(realtimeChannel);
     realtimeChannel = null;
@@ -1206,8 +1218,14 @@ async function loadGuestLinks(){
     const { data, error } = await sb.from('league_guest_links').select('*').eq('league_id', currentLeagueId);
     if (error) throw error;
     const el = document.getElementById('guestLinksList');
-    if (!data || !data.length) { el.innerHTML = '<p class="muted">Nessun link attivo.</p>'; return; }
-    el.innerHTML = '<h3 style="margin:12px 0 8px;font-size:14px">Link esistenti</h3>' + data.map(l => `
+    const now = Date.now();
+    const activeLinks = (data || []).filter(l => {
+      if (l.revoked_at || l.revoked === true || l.is_revoked === true || l.active === false || l.is_active === false) return false;
+      if (l.expires_at && (!Number.isFinite(Date.parse(l.expires_at)) || Date.parse(l.expires_at) <= now)) return false;
+      return true;
+    });
+    if (!activeLinks.length) { el.innerHTML = '<p class="muted">Nessun link attivo.</p>'; return; }
+    el.innerHTML = '<h3 style="margin:12px 0 8px;font-size:14px">Link attivi</h3>' + activeLinks.map(l => `
       <div class="matchline" style="margin:8px 0;padding:8px 0;border-bottom:1px solid var(--line)">
         <div class="mutedline">Creato ${esc((l.created_at||'').slice(0,10))} · scadenza ${(l.expires_at||'').slice(0,10) || '—'}</div>
         <button class="dangerlink" onclick="revokeGuest('${l.id}')">Revoca</button>
@@ -1221,8 +1239,11 @@ async function revokeGuest(linkId){
   try {
     const { error } = await sb.rpc('revoke_guest_link', { link_id: linkId });
     if (error) throw error;
+    const button = Array.from(document.querySelectorAll('#guestLinksList button')).find(b => b.getAttribute('onclick') === `revokeGuest('${linkId}')`);
+    button?.closest('.matchline')?.remove();
+    if (!document.querySelector('#guestLinksList .matchline')) document.getElementById('guestLinksList').innerHTML = '<p class="muted">Nessun link attivo.</p>';
     toast('Link revocato');
-    loadGuestLinks();
+    await loadGuestLinks();
   } catch (e) { toast('Errore: ' + e.message); }
 }
 
@@ -1600,6 +1621,7 @@ function renderAll(){
    LIFE COUNTER (preserved behaviour)
    ============================================================ */
 let lifeMatch = null;
+let lifeMode = 'BO3'; // BO1 è solo locale, non viene mai salvato
 let pauperWakeLock = null;
 let lcTimerInterval = null, lcTimerEndsAt = 0, lcExtraTurns = 0, lcTimerActive = false;
 let pendingAddPlayerSide = null;
@@ -1673,19 +1695,51 @@ async function savePlayerFromLifeModal(){
   toast(p ? 'Giocatore selezionato' : 'Giocatore aggiunto');
 }
 
+function selectLifeMode(mode){
+  if (mode !== 'BO1' && mode !== 'BO3') return;
+  if (lifeMatch && lifeMatch.finished && lifeMatch.mode !== 'BO1') return toast('Salva prima il risultato BO3');
+  if (lifeMatch && lifeMatch.mode !== 'BO1' && mode !== 'BO3') {
+    if (!confirm('Abbandonare il match BO3 in corso senza salvarlo?')) return;
+    clearInterval(lcTimerInterval);
+    releasePauperWakeLock();
+    closeLifeArena(true);
+    lifeMatch = null;
+  } else if (lifeMatch && lifeMatch.mode === 'BO1' && mode !== 'BO1') {
+    if (!confirm('Terminare la partita BO1 libera?')) return;
+    discardCasualLifeMatch();
+  }
+  lifeMode = mode;
+  renderLifeDisplay();
+}
+
+function discardCasualLifeMatch(){
+  if (!lifeMatch || lifeMatch.mode !== 'BO1') return;
+  clearInterval(lcTimerInterval);
+  lcTimerActive = false;
+  pendingLifeWinner = null;
+  lastLifeMove = null;
+  document.getElementById('lifeConfirm').classList.remove('active');
+  document.getElementById('lcTimerPanel').style.display = 'none';
+  resetLifeChangeIndicators();
+  closeLifeArena(true);
+  releasePauperWakeLock();
+  lifeMatch = null;
+  renderLifeDisplay();
+}
+
 function renderLifeDisplay(){
   if (!document.getElementById('lcLifeA')) return;
   const a = document.getElementById('lcPlayerA').value;
   const b = document.getElementById('lcPlayerB').value;
-  document.getElementById('lcNameA').textContent = player(a);
-  document.getElementById('lcNameB').textContent = player(b);
+  document.getElementById('lcNameA').textContent = lifeMatch?.mode === 'BO1' ? 'Giocatore A' : player(a);
+  document.getElementById('lcNameB').textContent = lifeMatch?.mode === 'BO1' ? 'Giocatore B' : player(b);
   document.getElementById('lcLifeA').textContent = lifeMatch ? lifeMatch.lifeA : 20;
   document.getElementById('lcLifeB').textContent = lifeMatch ? lifeMatch.lifeB : 20;
   document.getElementById('lcWinsA').textContent = 'Game vinti: ' + (lifeMatch ? lifeMatch.gamesA : 0);
   document.getElementById('lcWinsB').textContent = 'Game vinti: ' + (lifeMatch ? lifeMatch.gamesB : 0);
   ['A','B'].forEach(side => {
     const id = side === 'A' ? a : b;
-    const name = player(id);
+    const name = lifeMatch?.mode === 'BO1' ? 'Giocatore ' + side : player(id);
     const life = lifeMatch ? (side === 'A' ? lifeMatch.lifeA : lifeMatch.lifeB) : 20;
     const wins = lifeMatch ? (side === 'A' ? lifeMatch.gamesA : lifeMatch.gamesB) : 0;
     const n = document.getElementById('arenaName' + side);
@@ -1693,36 +1747,70 @@ function renderLifeDisplay(){
     const w = document.getElementById('arenaWins' + side);
     if (n) n.textContent = name;
     if (l) l.textContent = life;
-    if (w) w.textContent = 'Game vinti: ' + wins;
+    if (w) { w.textContent = 'Game vinti: ' + wins; w.style.display = lifeMatch?.mode === 'BO1' ? 'none' : ''; }
   });
   const status = document.getElementById('lcStatus');
   const playersEl = document.getElementById('lifePlayers');
   const start = document.getElementById('lcStartButton');
   const note = document.getElementById('lcActiveNote');
+  document.getElementById('lcEndCasualButton').style.display = lifeMatch?.mode === 'BO1' ? '' : 'none';
+  const casual = (lifeMatch?.mode || lifeMode) === 'BO1';
+  const modeSelector = document.getElementById('lcModeSelector');
+  modeSelector.style.display = lifeMatch ? 'none' : '';
+  ['BO1','BO3'].forEach(mode => {
+    const btn = document.getElementById('lcMode' + mode);
+    btn.classList.toggle('active', lifeMode === mode);
+    btn.classList.toggle('secondary', lifeMode !== mode);
+    btn.setAttribute('aria-pressed', String(lifeMode === mode));
+  });
+  document.getElementById('lcModeHelp').textContent = casual
+    ? 'BO1: un solo game libero, senza giocatori, mazzi o registrazione nella lega.'
+    : 'BO3: risultato valido per la lega, con giocatori e salvataggio obbligatorio.';
+  document.querySelector('#lcSetupHeader h2').textContent = casual ? 'Segna vita · BO1 libero' : 'Segna vita · partita al meglio delle 3';
+  document.getElementById('lcSetupHelp').textContent = casual
+    ? 'Gioca subito senza selezionare giocatori. Nessun risultato verrà salvato.'
+    : 'Seleziona i due sfidanti. Se un giocatore non è presente nella lista, scegli ＋ Aggiungi in fondo alla tendina. Data, giornata e presenze vengono registrate automaticamente al salvataggio del match.';
+  document.getElementById('lcSetupPlayers').style.display = casual || lifeMatch ? 'none' : '';
+  document.getElementById('lcWinsA').style.display = casual ? 'none' : '';
+  document.getElementById('lcWinsB').style.display = casual ? 'none' : '';
   const pendingResult = !!(lifeMatch && lifeMatch.finished);
-  ['lcSetupHeader','lcSetupHelp','lcSetupPlayers'].forEach(id => {
+  ['lcSetupHeader','lcSetupHelp'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = lifeMatch ? 'none' : '';
   });
   if (lifeMatch) {
     playersEl.classList.add('started');
-    start.textContent = 'Nuova partita';
+    start.textContent = casual ? 'Ricomincia BO1' : 'Nuova partita';
     start.disabled = pendingResult;
     start.style.display = pendingResult ? 'none' : '';
-    note.style.display = 'block';
-    status.innerHTML = `<strong>Game ${lifeMatch.gamesA + lifeMatch.gamesB + 1} · ${esc(player(lifeMatch.playerA))} ${lifeMatch.gamesA}–${lifeMatch.gamesB} ${esc(player(lifeMatch.playerB))}</strong><span class="muted">${lifeMatch.finished ? 'Match concluso · salva il risultato per continuare' : 'Partita in corso'}</span>`;
+    note.style.display = casual ? 'none' : 'block';
+    status.innerHTML = casual ? '<strong>BO1 libero in corso</strong><span class="muted">Nessun dato viene salvato · puoi ricominciare o uscire.</span>' : `<strong>Game ${lifeMatch.gamesA + lifeMatch.gamesB + 1} · ${esc(player(lifeMatch.playerA))} ${lifeMatch.gamesA}–${lifeMatch.gamesB} ${esc(player(lifeMatch.playerB))}</strong><span class="muted">${lifeMatch.finished ? 'Match concluso · salva il risultato per continuare' : 'Partita in corso'}</span>`;
   } else {
+    start.textContent = casual ? 'Inizia BO1 libero' : 'Nuova partita';
     start.disabled = false;
     start.style.display = '';
     playersEl.classList.remove('started');
     note.style.display = 'none';
-    status.innerHTML = '<strong>Pronto per iniziare</strong><span class="muted">Seleziona due giocatori diversi.</span>';
+    status.innerHTML = casual ? '<strong>BO1 · For fun</strong><span class="muted">Un solo game, nessun salvataggio.</span>' : '<strong>Pronto per iniziare</strong><span class="muted">Seleziona due giocatori diversi.</span>';
   }
 }
 
 function startLifeMatch(){
   if (!canWrite()) return toast('Non hai i permessi per registrare partite');
-  if (lifeMatch && lifeMatch.finished) return toast('Salva o scarta il risultato prima di iniziare una nuova partita');
+  if (lifeMatch && lifeMatch.finished && lifeMatch.mode !== 'BO1') return toast('Salva il risultato prima di iniziare una nuova partita');
+  if (lifeMode === 'BO1') {
+    if (lifeMatch?.mode === 'BO1') {
+      if (!confirm('Ricominciare il BO1 da 20-20?')) return;
+      discardCasualLifeMatch();
+    }
+    lifeMatch = { mode: 'BO1', lifeA: 20, lifeB: 20, gamesA: 0, gamesB: 0, finished: false,
+      timerMinutes: Number(document.getElementById('lcTimerMinutes')?.value || 0), extraTurns: 0, draw: false };
+    acquirePauperWakeLock();
+    renderLifeDisplay();
+    startLifeTimer();
+    openLifeArena();
+    return;
+  }
   const a = document.getElementById('lcPlayerA').value;
   const b = document.getElementById('lcPlayerB').value;
   if (!a || !b) return toast('Seleziona entrambi i giocatori');
@@ -1737,7 +1825,7 @@ function startLifeMatch(){
   const timerSetup = document.getElementById('lcTimerSetup');
   if (timerSetup) timerSetup.style.display = '';
   lifeMatch = {
-    playerA: a, playerB: b, round: Math.max(1, autoRound), date: today,
+    mode: 'BO3', playerA: a, playerB: b, round: Math.max(1, autoRound), date: today,
     lifeA: 20, lifeB: 20, gamesA: 0, gamesB: 0, finished: false,
     timerMinutes: Number(document.getElementById('lcTimerMinutes')?.value || 0),
     extraTurns: 0, draw: false
@@ -1820,7 +1908,7 @@ function closeLifeArena(quiet = false){
     const p = document.exitFullscreen();
     if (p && p.catch) p.catch(() => {});
   }
-  if (!quiet && lifeMatch && !lifeMatch.finished) toast('Vista chiusa · match ancora attivo');
+  if (!quiet && lifeMatch && !lifeMatch.finished) toast(lifeMatch.mode === 'BO1' ? 'BO1 in pausa · puoi ricominciare o uscire' : 'Vista chiusa · match ancora attivo');
 }
 
 function showLifeChange(side, delta){
@@ -1879,8 +1967,8 @@ function changeLife(side, delta){
   renderLifeDisplay();
   if (lifeMatch[key] === 0) {
     pendingLifeWinner = side === 'A' ? 'B' : 'A';
-    document.getElementById('lifeConfirmTitle').textContent = lifeMatch.gamesA + lifeMatch.gamesB === 2 ? 'Possibile fine match' : 'Possibile fine game';
-    document.getElementById('lifeConfirmText').textContent = player(side === 'A' ? lifeMatch.playerA : lifeMatch.playerB) + ' ha raggiunto zero vite. Confermi il game per ' + player(pendingLifeWinner === 'A' ? lifeMatch.playerA : lifeMatch.playerB) + '? Se è stato un errore puoi annullare l’ultima mossa.';
+    document.getElementById('lifeConfirmTitle').textContent = lifeMatch.mode === 'BO1' ? 'Fine BO1?' : lifeMatch.gamesA + lifeMatch.gamesB === 2 ? 'Possibile fine match' : 'Possibile fine game';
+    document.getElementById('lifeConfirmText').textContent = lifeMatch.mode === 'BO1' ? 'Giocatore ' + side + ' ha raggiunto zero vite. Confermi la vittoria di Giocatore ' + pendingLifeWinner + '? Puoi annullare l’ultima mossa.' : player(side === 'A' ? lifeMatch.playerA : lifeMatch.playerB) + ' ha raggiunto zero vite. Confermi il game per ' + player(pendingLifeWinner === 'A' ? lifeMatch.playerA : lifeMatch.playerB) + '? Se è stato un errore puoi annullare l’ultima mossa.';
     document.getElementById('lifeConfirm').classList.add('active');
   }
 }
@@ -1905,7 +1993,7 @@ function confirmLifeGame(){
 function resetLifeGame(){
   if (!lifeMatch || lifeMatch.finished) return toast('Nessun game attivo');
   resetLifeChangeIndicators();
-  if (!confirm('Resettare le vite a 20-20 mantenendo il punteggio dei game?')) return;
+  if (!confirm(lifeMatch.mode === 'BO1' ? 'Resettare le vite a 20-20?' : 'Resettare le vite a 20-20 mantenendo il punteggio dei game?')) return;
   pendingLifeWinner = null;
   lastLifeMove = null;
   document.getElementById('lifeConfirm').classList.remove('active');
@@ -1920,6 +2008,12 @@ function awardLifeGame(winner){
   pendingLifeWinner = null;
   lastLifeMove = null;
   document.getElementById('lifeConfirm').classList.remove('active');
+  if (lifeMatch.mode === 'BO1') {
+    const message = 'BO1 concluso · vince Giocatore ' + winner + '. Nessun risultato salvato.';
+    discardCasualLifeMatch();
+    toast(message);
+    return;
+  }
   if (winner === 'A') lifeMatch.gamesA++; else lifeMatch.gamesB++;
   if (lifeMatch.gamesA >= 2 || lifeMatch.gamesB >= 2) {
     lifeMatch.finished = true;
@@ -1937,6 +2031,7 @@ function awardLifeGame(winner){
 
 function finishLifeMatch(){
   if (!lifeMatch) return;
+  if (lifeMatch.mode === 'BO1') { discardCasualLifeMatch(); toast('BO1 terminato · nessun risultato salvato'); return; }
   releasePauperWakeLock();
   setLifeResultNavigationLock(true);
   const m = lifeMatch;
@@ -2060,7 +2155,7 @@ function setLifeResultNavigationLock(locked){
 }
 
 async function saveLifeMatch(){
-  if (!lifeMatch || !canWrite()) return;
+  if (!lifeMatch || lifeMatch.mode === 'BO1' || !canWrite()) return;
   const isDraw = lifeMatch.gamesA === lifeMatch.gamesB;
   const playerA = lifeMatch.playerA;
   const playerB = lifeMatch.playerB;
@@ -2270,7 +2365,7 @@ async function clearAll(){
    NAV & EVENTS
    ============================================================ */
 document.querySelectorAll('.nav button').forEach(b => b.addEventListener('click', e => {
-  if (lifeMatch && lifeMatch.finished && b.dataset.tab !== 'lifecounter') {
+  if (lifeMatch && lifeMatch.finished && lifeMatch.mode !== 'BO1' && b.dataset.tab !== 'lifecounter') {
     e.preventDefault();
     toast('Salva il risultato della partita prima di cambiare scheda');
     return;
