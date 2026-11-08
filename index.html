@@ -19,7 +19,7 @@ small,.muted{color:var(--muted)}
 .app{max-width:1100px;margin:auto;padding:18px 14px 90px}
 .top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
 .brand{display:flex;gap:11px;align-items:center}
-.logo{height:42px;width:42px;border-radius:13px;background:var(--accent);color:#111827;display:grid;place-items:center;font-weight:900;font-size:19px}
+.logo{overflow:hidden;flex-shrink:0}.logo img{width:100%;height:100%;object-fit:cover;display:block}.league-card-head{display:flex;align-items:center;gap:12px}.league-card-head h3{margin:0}.league-avatar{width:48px;height:48px;border-radius:13px;background:var(--accent);color:#111827;display:grid;place-items:center;font-size:20px;font-weight:900;overflow:hidden;flex-shrink:0}.league-avatar img{width:100%;height:100%;object-fit:cover}.branding-preview{width:76px;height:76px;border-radius:20px;background:var(--accent);color:#111827;display:grid;place-items:center;font-size:28px;font-weight:900;overflow:hidden;flex-shrink:0}.branding-preview img{width:100%;height:100%;object-fit:cover}.branding-image-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}.branding-image-actions{display:flex;gap:8px;flex-wrap:wrap}.logo{height:42px;width:42px;border-radius:13px;background:var(--accent);color:#111827;display:grid;place-items:center;font-weight:900;font-size:19px}
 .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:800}
 .sub{color:var(--muted);font-size:13px;margin-top:3px}
 .nav{display:flex;gap:7px;overflow:auto;padding:4px 0 14px;margin-bottom:8px}
@@ -320,7 +320,7 @@ body.arena-open{overflow:hidden}
 <div class="app">
 <header class="top">
   <div class="brand">
-    <div class="logo">P</div>
+    <div class="logo" id="leagueLogo">P</div>
     <div>
       <div class="eyebrow" id="leagueEyebrow">League tracker</div>
       <h1 id="leagueTitle">Pauper League</h1>
@@ -533,6 +533,21 @@ body.arena-open{overflow:hidden}
         <input id="guestLink" readonly onclick="this.select()">
       </div>
       <div id="guestLinksList" style="margin-top:16px"></div>
+    </div>
+    <div class="card span6">
+      <h2>Personalizzazione lega</h2>
+      <p class="muted" style="margin-bottom:14px">Solo gli admin possono modificare il nome e l'immagine della lega.</p>
+      <div class="field"><label for="brandingName">Nome della lega</label><input id="brandingName" maxlength="80" placeholder="Nome della lega"></div>
+      <div class="branding-image-row" style="margin-top:14px">
+        <div class="branding-preview" id="brandingPreview">P</div>
+        <div class="branding-image-actions">
+          <button type="button" class="secondary" onclick="document.getElementById('brandingFile').click()">Cambia immagine</button>
+          <button type="button" class="secondary" id="brandingRemove" onclick="removeLeagueImage()">Rimuovi</button>
+        </div>
+      </div>
+      <input id="brandingFile" type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="uploadLeagueImage(this)">
+      <p class="note">JPG, PNG o WebP · immagine quadrata ottimizzata a 256 × 256 px · una sola per lega.</p>
+      <div class="actions"><button id="brandingSave" type="button" onclick="saveLeagueName()">Salva nome</button></div>
     </div>
     <div class="card span6">
       <h2>Info lega</h2>
@@ -940,7 +955,7 @@ async function loadUserLeagues(){
     // Prova con join sulla FK; se non c'è relazione configurata, fallback senza embed
     let res = await sb
       .from('league_members')
-      .select('league_id, role, leagues(id, name)')
+      .select('league_id, role, leagues(id, name, logo_version)')
       .eq('user_id', currentUser.id);
     data = res.data; error = res.error;
     if (error) {
@@ -955,7 +970,7 @@ async function loadUserLeagues(){
       const ids = [...new Set((data || []).map(r => r.league_id).filter(Boolean))];
       let leagueMap = {};
       if (ids.length) {
-        const lr = await sb.from('leagues').select('id, name').in('id', ids);
+        const lr = await sb.from('leagues').select('id, name, logo_version').in('id', ids);
         if (lr.error) throw lr.error;
         (lr.data || []).forEach(l => { leagueMap[l.id] = l; });
       }
@@ -993,7 +1008,7 @@ function renderLeaguesList(){
   list.innerHTML = userLeagues.map(l => `
     <div class="league-card" onclick="enterLeague('${l.league_id}', '${l.role}')">
       <div class="role">${esc(l.role)}</div>
-      <h3>${esc(l.league?.name || 'Lega senza nome')}</h3>
+      <div class="league-card-head"><div class="league-avatar">${leagueLogoMarkup(l.league, 'P')}</div><h3>${esc(l.league?.name || 'Lega senza nome')}</h3></div>
       <div class="league-meta">
         <span>ID: ${esc(String(l.league_id).slice(0,8))}…</span>
       </div>
@@ -1050,6 +1065,7 @@ async function enterGuestMode(token){
     db.matches = (data.matches || []).map(r => ({ ...r.data, id: r.id }));
     db.rounds  = (data.rounds  || []).map(r => ({ ...r.data, id: r.id }));
     db.league  = { name: data.league.name || 'Lega' };
+    renderLeagueBranding();
     applyRoleUI();
     renderAll();
     showScreen('screenApp');
@@ -1085,7 +1101,7 @@ async function loadLeagueData(leagueId){
   currentLeagueMeta = lRes.data || { id: leagueId, name: 'Lega' };
   db.league = { name: currentLeagueMeta.name || 'Lega' };
 
-  document.getElementById('leagueTitle').textContent = db.league.name;
+  renderLeagueBranding();
   document.getElementById('leagueEyebrow').textContent = 'Lega';
   document.getElementById('leagueSub').textContent = 'Matchup, classifica e statistiche';
   document.getElementById('rolePill').textContent = currentRole || '—';
@@ -1277,12 +1293,118 @@ async function loadMembers(){
         <div><strong>${esc(m.user_id.slice(0,8))}…</strong><div class="mutedline">${esc(m.role)}</div></div>
       </div>
     `).join('') || '<p class="muted">Nessun membro.</p>';
+    renderBrandingEditor();
     document.getElementById('leagueInfo').innerHTML = `
       <p><b>Nome:</b> ${esc(db.league.name)}</p>
       <p class="mutedline">ID: ${esc(currentLeagueId)}</p>
       <p class="mutedline">Giocatori: ${db.players.length} · Mazzi: ${db.decks.length} · Match: ${db.matches.length}</p>
     `;
   } catch (e) { console.error(e); }
+}
+
+/* ============================================================
+   LEAGUE BRANDING (Supabase Storage, one deterministic object)
+   ============================================================ */
+const LEAGUE_LOGO_BUCKET = 'league-logos';
+function leagueLogoUrl(meta){
+  if (!meta?.id || !meta?.logo_version) return '';
+  const path = `${meta.id}/logo.webp`;
+  const { data } = sb.storage.from(LEAGUE_LOGO_BUCKET).getPublicUrl(path);
+  return data.publicUrl + '?v=' + encodeURIComponent(meta.logo_version);
+}
+function leagueLogoMarkup(meta, fallback = 'P'){
+  const url = leagueLogoUrl(meta);
+  return url ? `<img src="${esc(url)}" alt="Logo della lega" loading="lazy" onerror="this.replaceWith(document.createTextNode('P'))">` : esc(fallback);
+}
+function renderLeagueBranding(){
+  const meta = currentLeagueMeta || {};
+  document.getElementById('leagueTitle').textContent = meta.name || 'Lega';
+  document.getElementById('leagueLogo').innerHTML = leagueLogoMarkup(meta);
+  renderBrandingEditor();
+}
+function renderBrandingEditor(){
+  if (!canAdmin() || !currentLeagueMeta) return;
+  const name = document.getElementById('brandingName');
+  if (name && document.activeElement !== name) name.value = currentLeagueMeta.name || '';
+  const preview = document.getElementById('brandingPreview');
+  if (preview) preview.innerHTML = leagueLogoMarkup(currentLeagueMeta);
+  const remove = document.getElementById('brandingRemove');
+  if (remove) remove.disabled = !currentLeagueMeta.logo_version;
+}
+function applyLeagueMeta(meta){
+  currentLeagueMeta = { ...currentLeagueMeta, ...meta };
+  db.league.name = currentLeagueMeta.name;
+  const entry = userLeagues.find(l => l.league_id === currentLeagueId);
+  if (entry) entry.league = { ...entry.league, ...currentLeagueMeta };
+  renderLeagueBranding();
+  renderLeaguesList();
+  const info = document.getElementById('leagueInfo');
+  if (info) info.innerHTML = `<p><b>Nome:</b> ${esc(db.league.name)}</p><p class="mutedline">ID: ${esc(currentLeagueId)}</p><p class="mutedline">Giocatori: ${db.players.length} · Mazzi: ${db.decks.length} · Match: ${db.matches.length}</p>`;
+}
+async function saveLeagueName(){
+  if (!canAdmin() || !currentLeagueId) return;
+  const name = document.getElementById('brandingName').value.trim();
+  if (!name || name.length > 80) return toast('Inserisci un nome da 1 a 80 caratteri');
+  const button = document.getElementById('brandingSave');
+  button.disabled = true;
+  try {
+    const { data, error } = await sb.from('leagues').update({ name }).eq('id', currentLeagueId).select('id, name, logo_version').single();
+    if (error) throw error;
+    applyLeagueMeta(data);
+    toast('Nome della lega aggiornato');
+  } catch(e){ toast('Errore: ' + e.message); }
+  finally { button.disabled = false; }
+}
+async function imageToWebp(file){
+  if (!['image/png','image/jpeg','image/webp'].includes(file.type)) throw new Error('Formato non supportato');
+  if (file.size > 8 * 1024 * 1024) throw new Error('Immagine troppo grande (max 8 MB)');
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    const side = Math.min(img.naturalWidth, img.naturalHeight);
+    ctx.drawImage(img, (img.naturalWidth-side)/2, (img.naturalHeight-side)/2, side, side, 0, 0, 256, 256);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', .82));
+    if (!blob || blob.type !== 'image/webp') throw new Error('Conversione WebP non supportata');
+    return blob;
+  } finally { URL.revokeObjectURL(url); }
+}
+async function uploadLeagueImage(input){
+  if (!canAdmin() || !currentLeagueId || !input.files?.length) return;
+  const file = input.files[0];
+  const leagueId = currentLeagueId;
+  input.disabled = true;
+  try {
+    const blob = await imageToWebp(file);
+    const { error } = await sb.storage.from(LEAGUE_LOGO_BUCKET).upload(`${leagueId}/logo.webp`, blob, { upsert: true, contentType: 'image/webp', cacheControl: '3600' });
+    if (error) throw error;
+    const version = Date.now();
+    const { data, error: updateError } = await sb.from('leagues').update({ logo_version: version }).eq('id', leagueId).select('id, name, logo_version').single();
+    if (updateError) throw updateError;
+    if (currentLeagueId === leagueId) applyLeagueMeta(data);
+    toast('Immagine della lega aggiornata');
+  } catch(e){ toast('Errore immagine: ' + e.message); }
+  finally { input.value = ''; input.disabled = false; }
+}
+async function removeLeagueImage(){
+  if (!canAdmin() || !currentLeagueId || !currentLeagueMeta?.logo_version) return;
+  if (!confirm('Rimuovere l’immagine della lega?')) return;
+  const leagueId = currentLeagueId;
+  const button = document.getElementById('brandingRemove');
+  button.disabled = true;
+  try {
+    const { error } = await sb.storage.from(LEAGUE_LOGO_BUCKET).remove([`${leagueId}/logo.webp`]);
+    if (error) throw error;
+    const { data, error: updateError } = await sb.from('leagues').update({ logo_version: null }).eq('id', leagueId).select('id, name, logo_version').single();
+    if (updateError) throw updateError;
+    if (currentLeagueId === leagueId) applyLeagueMeta(data);
+    toast('Immagine rimossa');
+  } catch(e){ toast('Errore: ' + e.message); }
+  finally { renderBrandingEditor(); }
 }
 
 /* ============================================================
