@@ -222,6 +222,16 @@ body.arena-open{overflow:hidden}
 .crop-viewport:active{cursor:grabbing}.crop-viewport img{position:absolute;max-width:none;pointer-events:none;user-select:none}
 .crop-zoom-row{display:flex;align-items:center;gap:12px;margin:12px 0 20px}.crop-zoom-row input{flex:1;min-width:0;accent-color:var(--accent)}
 .crop-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+
+/* Accordion delle azioni nella schermata Le mie leghe */
+.league-accordion { padding:0; overflow:hidden; }
+.league-accordion > summary { list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 20px; font-weight:750; font-size:1.15rem; }
+.league-accordion > summary::-webkit-details-marker { display:none; }
+.league-accordion > summary:focus-visible { outline:2px solid #b5f56b; outline-offset:-3px; border-radius:12px; }
+.league-accordion .accordion-chevron { font-size:1.5rem; line-height:1; color:#b5f56b; transition:transform .18s ease; }
+.league-accordion[open] .accordion-chevron { transform:rotate(180deg); }
+.league-accordion .accordion-content { padding:0 20px 20px; }
+
 </style>
 </head>
 <body>
@@ -313,19 +323,6 @@ body.arena-open{overflow:hidden}
         <button class="secondary" id="btnLogout">Esci</button>
       </div>
     </header>
-    <div id="platformAdminPanel" class="card" style="display:none;margin-bottom:18px">
-      <h2>Gestione amministratori</h2>
-      <p class="muted">Genera un invito monouso: il destinatario potrà creare una sola lega e diventarne admin.</p>
-      <div class="inline-add" style="margin-top:12px">
-        <input id="adminInviteDays" type="number" min="1" max="30" value="7" aria-label="Validità in giorni" style="max-width:110px">
-        <button id="btnCreateAdminInvite">Crea invito admin</button>
-      </div>
-      <div id="adminInviteResult" style="display:none;margin-top:12px">
-        <label for="adminInviteLink">Link da condividere</label>
-        <div class="inline-add"><input id="adminInviteLink" readonly><button id="btnCopyAdminInvite">Copia</button></div>
-      </div>
-      <div id="adminInviteStatus" class="muted" style="margin-top:8px" aria-live="polite"></div>
-    </div>
     <div id="newAdminLeaguePanel" class="card" style="display:none;margin-bottom:18px">
       <h2>Crea la tua lega</h2>
       <p class="muted">Il tuo invito admin consente di creare una sola lega. Dopo la creazione ne sarai amministratore.</p>
@@ -344,14 +341,28 @@ body.arena-open{overflow:hidden}
       <button id="btnAcceptInvite">Accetta invito</button>
     </div>
     <div id="leaguesList" class="league-grid"></div>
-    <div class="card" style="margin-top:20px">
-      <h2>Hai un invito?</h2>
-      <p class="muted" style="margin-bottom:12px">Incolla il codice o il link ricevuto dall’admin della lega.</p>
-      <div class="inline-add">
-        <input id="inviteCodeInput2" placeholder="Codice invito">
-        <button id="btnAcceptInvite2">Accetta</button>
+    <details class="card league-accordion" style="margin-top:20px">
+      <summary>Hai un invito?<span class="accordion-chevron" aria-hidden="true">⌄</span></summary>
+      <div class="accordion-content">
+        <p class="muted" style="margin-bottom:12px">Incolla il codice o il link ricevuto dall’admin della lega.</p>
+        <div class="inline-add">
+          <input id="inviteCodeInput2" placeholder="Codice invito">
+          <button id="btnAcceptInvite2">Accetta</button>
+        </div>
       </div>
-    </div>
+    </details>
+    <details id="platformAdminPanel" class="card league-accordion" style="display:none;margin-top:14px">
+      <summary>Gestione amministratori<span class="accordion-chevron" aria-hidden="true">⌄</span></summary>
+      <div class="accordion-content">
+        <p class="muted">Genera un invito monouso valido 24 ore: il destinatario potrà creare una sola lega e diventarne admin.</p>
+        <div style="margin-top:12px"><button id="btnCreateAdminInvite">Crea invito admin</button></div>
+        <div id="adminInviteResult" style="display:none;margin-top:12px">
+          <label for="adminInviteLink">Link da condividere</label>
+          <div class="inline-add"><input id="adminInviteLink" readonly><button id="btnCopyAdminInvite">Copia</button></div>
+        </div>
+        <div id="adminInviteStatus" class="muted" style="margin-top:8px" aria-live="polite"></div>
+      </div>
+    </details>
   </div>
 </div>
 
@@ -1064,12 +1075,10 @@ async function refreshPlatformAdminUI(){
 async function createAdminInvite(){
   const btn = document.getElementById('btnCreateAdminInvite');
   const status = document.getElementById('adminInviteStatus');
-  const days = Number(document.getElementById('adminInviteDays').value);
-  if (!Number.isInteger(days) || days < 1 || days > 30) return toast('Validità da 1 a 30 giorni');
   btn.disabled = true;
   status.textContent = 'Creazione invito…';
   try {
-    const {data,error} = await sb.rpc('create_platform_admin_invite', {validity_days: days});
+    const {data,error} = await sb.rpc('create_platform_admin_invite', {validity_days: 1});
     if (error) throw error;
     const url = new URL(window.location.origin + window.location.pathname);
     url.searchParams.set('admin_invite', String(data));
