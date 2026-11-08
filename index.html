@@ -36,6 +36,11 @@ small,.muted{color:var(--muted)}
 .section-head h2{margin:0}
 .formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .field.full{grid-column:1/-1}
+/* Filtro date Giocatori: evita l'overflow dei controlli data su Safari iOS */
+#players .players-date-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+#players .players-date-grid .field{min-width:0;max-width:100%}
+#players .players-date-grid input[type="date"]{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;-webkit-appearance:none;appearance:none}
+@media(max-width:699px){#players .players-date-grid{grid-template-columns:minmax(0,1fr)}}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .stack{display:grid;gap:10px}
 .tablewrap{overflow:auto}
@@ -511,7 +516,7 @@ body.arena-open{overflow:hidden}
   <div class="card">
     <h2>Giocatori della lega</h2>
     <p class="note" style="margin:0 0 12px">I giocatori vengono aggiunti dalla sezione Segna vita. Il filtro data include entrambe le date selezionate.</p>
-    <div class="formgrid" style="margin:0 0 14px">
+    <div class="formgrid players-date-grid" style="margin:0 0 14px">
       <div class="field"><label for="playersDateFrom">Dal</label><input id="playersDateFrom" type="date" onchange="renderPlayers()"></div>
       <div class="field"><label for="playersDateTo">Al</label><input id="playersDateTo" type="date" onchange="renderPlayers()"></div>
       <div class="field" style="align-self:end"><button type="button" class="secondary" onclick="clearPlayersDateFilter()">Azzera filtro</button></div>
