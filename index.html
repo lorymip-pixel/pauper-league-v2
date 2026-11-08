@@ -791,14 +791,28 @@ async function initAuth(){
       showScreen('screenAuth');
     }
 
-    sb.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session) {
+    // Supabase mantiene la sessione nel browser e rinnova i token automaticamente.
+    // Non ricaricare la schermata ad ogni SIGNED_IN: può essere emesso anche
+    // quando una sessione già esistente viene riconfermata.
+    sb.auth.onAuthStateChange((event, session) => {
+      if (event === 'TOKEN_REFRESHED' && session) {
         currentSession = session;
         currentUser = session.user;
-        isGuestMode = false;
-        guestToken = null;
-        await loadUserLeagues();
-        showScreen('screenLeagues');
+        return;
+      }
+      if (event === 'SIGNED_IN' && session) {
+        const sameUser = currentUser?.id === session.user.id;
+        currentSession = session;
+        currentUser = session.user;
+        if (sameUser && !document.getElementById('screenAuth').classList.contains('active')) return;
+        // Eseguire le richieste a Supabase fuori dal callback auth evita deadlock.
+        setTimeout(async () => {
+          if (currentUser?.id !== session.user.id) return;
+          isGuestMode = false;
+          guestToken = null;
+          await loadUserLeagues();
+          if (currentUser?.id === session.user.id) showScreen('screenLeagues');
+        }, 0);
       } else if (event === 'SIGNED_OUT') {
         currentUser = null;
         currentSession = null;
@@ -885,7 +899,9 @@ async function resetPassword(){
 }
 
 async function logout(){
-  await sb.auth.signOut();
+  // Disconnette solo questo dispositivo; gli altri restano autenticati.
+  const { error } = await sb.auth.signOut({ scope: 'local' });
+  if (error) return showAuthError('Logout non riuscito: ' + error.message);
   leaveLeague();
   showScreen('screenAuth');
 }
