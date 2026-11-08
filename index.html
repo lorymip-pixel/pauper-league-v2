@@ -213,12 +213,32 @@ body.arena-open{overflow:hidden}
 .loading-overlay.hidden{display:none}
 .spinner{width:36px;height:36px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+.league-card-text{min-width:0}.league-card-text .role{margin-top:5px}.league-card-head h3{line-height:1.2}
+.crop-modal{position:fixed;inset:0;z-index:3000;background:rgba(5,9,20,.88);display:flex;align-items:center;justify-content:center;padding:16px}
+.crop-modal[hidden]{display:none!important}.crop-dialog{width:min(100%,420px);background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 20px 80px #0009}
+.crop-dialog h2{font-size:20px;margin:0 0 6px}.crop-dialog p{font-size:13px;color:var(--muted);margin:0 0 14px}
+.crop-viewport{width:min(100%,320px);aspect-ratio:1;overflow:hidden;position:relative;margin:0 auto 16px;background:#0b1020;border:2px solid var(--accent);border-radius:18px;touch-action:none;cursor:grab;user-select:none}
+.crop-viewport:active{cursor:grabbing}.crop-viewport img{position:absolute;max-width:none;pointer-events:none;user-select:none}
+.crop-zoom-row{display:flex;align-items:center;gap:12px;margin:12px 0 20px}.crop-zoom-row input{flex:1;min-width:0;accent-color:var(--accent)}
+.crop-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 </style>
 </head>
 <body>
 <div id="loadingOverlay" class="loading-overlay">
   <div class="spinner"></div>
   <div class="muted">Caricamento…</div>
+</div>
+
+
+<div class="crop-modal" id="logoCropModal" hidden role="dialog" aria-modal="true" aria-labelledby="cropTitle">
+  <div class="crop-dialog">
+    <h2 id="cropTitle">Posiziona il logo</h2>
+    <p>Trascina l'immagine per centrarla e usa lo zoom per ingrandirla.</p>
+    <div class="crop-viewport" id="logoCropViewport"><img id="logoCropImage" alt="Anteprima ritaglio"></div>
+    <div class="crop-zoom-row"><label for="logoCropZoom">Zoom</label><input type="range" id="logoCropZoom" min="1" max="4" step="0.01" value="1"><span id="logoCropZoomValue">100%</span></div>
+    <div class="crop-actions"><button type="button" class="secondary" onclick="closeLogoCrop()">Annulla</button><button type="button" id="logoCropConfirm" onclick="confirmLogoCrop()">Salva immagine</button></div>
+  </div>
 </div>
 
 <!-- AUTH SCREEN -->
@@ -1007,8 +1027,7 @@ function renderLeaguesList(){
   empty.style.display = 'none';
   list.innerHTML = userLeagues.map(l => `
     <div class="league-card" onclick="enterLeague('${l.league_id}', '${l.role}')">
-      <div class="role">${esc(l.role)}</div>
-      <div class="league-card-head"><div class="league-avatar">${leagueLogoMarkup(l.league, 'P')}</div><h3>${esc(l.league?.name || 'Lega senza nome')}</h3></div>
+      <div class="league-card-head"><div class="league-avatar">${leagueLogoMarkup(l.league, 'P')}</div><div class="league-card-text"><h3>${esc(l.league?.name || 'Lega senza nome')}</h3><div class="role">${esc(l.role)}</div></div></div>
       <div class="league-meta">
         <span>ID: ${esc(String(l.league_id).slice(0,8))}…</span>
       </div>
@@ -1355,41 +1374,97 @@ async function saveLeagueName(){
   } catch(e){ toast('Errore: ' + e.message); }
   finally { button.disabled = false; }
 }
-async function imageToJpeg(file){
-  if (!['image/png','image/jpeg','image/webp'].includes(file.type)) throw new Error('Formato non supportato');
-  if (file.size > 8 * 1024 * 1024) throw new Error('Immagine troppo grande (max 8 MB)');
-  const url = URL.createObjectURL(file);
-  try {
-    const img = new Image();
-    img.src = url;
-    await img.decode();
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 256;
-    const ctx = canvas.getContext('2d');
-    const side = Math.min(img.naturalWidth, img.naturalHeight);
-    ctx.drawImage(img, (img.naturalWidth-side)/2, (img.naturalHeight-side)/2, side, side, 0, 0, 256, 256);
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', .82));
-    if (!blob || blob.type !== 'image/jpeg') throw new Error('Conversione JPEG non supportata');
-    return blob;
-  } finally { URL.revokeObjectURL(url); }
+let logoCropState = null;
+function updateLogoCropPreview(){
+  const st = logoCropState;
+  if (!st) return;
+  const viewport = document.getElementById('logoCropViewport');
+  const img = document.getElementById('logoCropImage');
+  const size = viewport.clientWidth;
+  const scale = Math.max(size / st.width, size / st.height) * st.zoom;
+  const w = st.width * scale, h = st.height * scale;
+  const maxX = Math.max(0,(w-size)/2), maxY = Math.max(0,(h-size)/2);
+  st.x = Math.max(-maxX, Math.min(maxX,st.x));
+  st.y = Math.max(-maxY, Math.min(maxY,st.y));
+  img.style.width = w+'px'; img.style.height = h+'px';
+  img.style.left = ((size-w)/2+st.x)+'px';
+  img.style.top = ((size-h)/2+st.y)+'px';
+  document.getElementById('logoCropZoomValue').textContent = Math.round(st.zoom*100)+'%';
+}
+function closeLogoCrop(){
+  const st = logoCropState;
+  logoCropState = null;
+  document.getElementById('logoCropModal').hidden = true;
+  document.getElementById('brandingFile').value = '';
+  if(st?.url) URL.revokeObjectURL(st.url);
 }
 async function uploadLeagueImage(input){
   if (!canAdmin() || !currentLeagueId || !input.files?.length) return;
   const file = input.files[0];
-  const leagueId = currentLeagueId;
-  input.disabled = true;
+  if (!['image/png','image/jpeg','image/webp'].includes(file.type)) {toast('Formato non supportato');input.value='';return;}
+  if (file.size > 8*1024*1024) {toast('Immagine troppo grande (max 8 MB)');input.value='';return;}
+  const url = URL.createObjectURL(file);
   try {
-    const blob = await imageToJpeg(file);
-    const { error } = await sb.storage.from(LEAGUE_LOGO_BUCKET).upload(`${leagueId}/logo.jpg`, blob, { upsert: true, contentType: 'image/jpeg', cacheControl: '3600' });
-    if (error) throw error;
-    const version = Date.now();
-    const { data, error: updateError } = await sb.from('leagues').update({ logo_version: version }).eq('id', leagueId).select('id, name, logo_version').single();
-    if (updateError) throw updateError;
-    if (currentLeagueId === leagueId) applyLeagueMeta(data);
-    toast('Immagine della lega aggiornata');
-  } catch(e){ toast('Errore immagine: ' + e.message); }
-  finally { input.value = ''; input.disabled = false; }
+    const img = new Image(); img.src = url; await img.decode();
+    if (!img.naturalWidth || !img.naturalHeight) throw new Error('Immagine non valida');
+    if (logoCropState) closeLogoCrop();
+    logoCropState = {img,url,width:img.naturalWidth,height:img.naturalHeight,zoom:1,x:0,y:0,leagueId:currentLeagueId};
+    document.getElementById('logoCropImage').src = url;
+    document.getElementById('logoCropZoom').value = '1';
+    document.getElementById('logoCropModal').hidden = false;
+    updateLogoCropPreview();
+  } catch(e){ URL.revokeObjectURL(url); input.value=''; toast('Errore immagine: '+e.message); }
 }
+async function confirmLogoCrop(){
+  const st = logoCropState;
+  if (!st || !canAdmin() || st.leagueId !== currentLeagueId) return;
+  const button = document.getElementById('logoCropConfirm'); button.disabled = true;
+  try {
+    const size = document.getElementById('logoCropViewport').clientWidth;
+    const scale = Math.max(size/st.width,size/st.height)*st.zoom;
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';ctx.fillRect(0,0,256,256);
+    const ratio = 256/size;
+    ctx.drawImage(st.img, ((size-st.width*scale)/2+st.x)*ratio, ((size-st.height*scale)/2+st.y)*ratio, st.width*scale*ratio, st.height*scale*ratio);
+    const blob = await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.82));
+    if (!blob || blob.type !== 'image/jpeg') throw new Error('Conversione JPEG non supportata');
+    const {error} = await sb.storage.from(LEAGUE_LOGO_BUCKET).upload(`${st.leagueId}/logo.jpg`,blob,{upsert:true,contentType:'image/jpeg',cacheControl:'3600'});
+    if(error) throw error;
+    const {data,error:updateError} = await sb.from('leagues').update({logo_version:Date.now()}).eq('id',st.leagueId).select('id,name,logo_version').single();
+    if(updateError) throw updateError;
+    if(currentLeagueId === st.leagueId) applyLeagueMeta(data);
+    closeLogoCrop(); toast('Immagine della lega aggiornata');
+  } catch(e){toast('Errore immagine: '+e.message);}
+  finally {button.disabled = false;}
+}
+document.getElementById('logoCropZoom').addEventListener('input', e=>{
+  if(!logoCropState)return;
+  const st=logoCropState, old=st.zoom;
+  st.zoom=Number(e.target.value);
+  st.x *= st.zoom/old; st.y *= st.zoom/old;
+  updateLogoCropPreview();
+});
+{
+  const viewport=document.getElementById('logoCropViewport');
+  let drag=null;
+  viewport.addEventListener('pointerdown',e=>{
+    if(!logoCropState)return;
+    drag={id:e.pointerId,startX:e.clientX,startY:e.clientY,x:logoCropState.x,y:logoCropState.y};
+    viewport.setPointerCapture(e.pointerId);
+  });
+  viewport.addEventListener('pointermove',e=>{
+    if(!drag || e.pointerId!==drag.id || !logoCropState)return;
+    logoCropState.x=drag.x+e.clientX-drag.startX;
+    logoCropState.y=drag.y+e.clientY-drag.startY;
+    updateLogoCropPreview();
+  });
+  viewport.addEventListener('pointerup',()=>drag=null);
+  viewport.addEventListener('pointercancel',()=>drag=null);
+}
+document.getElementById('logoCropModal').addEventListener('click',e=>{
+  if(e.target.id==='logoCropModal' && !document.getElementById('logoCropConfirm').disabled) closeLogoCrop();
+});
 async function removeLeagueImage(){
   if (!canAdmin() || !currentLeagueId || !currentLeagueMeta?.logo_version) return;
   if (!confirm('Rimuovere l’immagine della lega?')) return;
