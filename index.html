@@ -148,6 +148,15 @@ table{font-size:12px}th,td{padding:9px 7px}
 .syncBanner{overflow-wrap:anywhere}
 .life-players{display:none}.life-players.started{display:grid}
 .life-setup-status{margin-top:12px}
+.life-title-row{justify-content:flex-start;gap:10px;position:relative}
+.life-info{position:relative;flex-shrink:0}
+.life-info summary{list-style:none;cursor:pointer;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--muted);color:var(--muted);font-size:13px;font-weight:800;line-height:1;user-select:none}
+.life-info summary::-webkit-details-marker{display:none}
+.life-info summary:hover,.life-info[open] summary{border-color:var(--accent);color:var(--accent)}
+.life-info-content{position:absolute;top:calc(100% + 9px);left:0;z-index:20;width:min(330px,calc(100vw - 76px));box-sizing:border-box;padding:12px 14px;background:#202b45;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 30px #0008;color:var(--text);font-size:13px;font-weight:400;line-height:1.5}
+@media(hover:hover){.life-info:not([open]):hover .life-info-content{display:block}.life-info:not([open]) .life-info-content{display:none}}
+.life-start-actions{margin-top:12px}.life-start-actions #lcStartButton{width:100%}
+
 .life-confirm{position:fixed;inset:0;z-index:1200;background:#050914eF;display:none;align-items:center;justify-content:center;padding:20px}
 .life-confirm.active{display:flex}
 .life-confirm-card{width:min(100%,420px);background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 20px 70px #0009}
@@ -428,8 +437,13 @@ body.arena-open{overflow:hidden}
 <section id="lifecounter" class="tabscontent">
   <div class="grid">
     <div class="card span12">
-      <div id="lcSetupHeader" class="section-head"><h2>Segna vita · partita al meglio delle 3</h2><span class="pill">20 vite iniziali</span></div>
-      <p id="lcSetupHelp" class="muted" style="margin-bottom:14px">Seleziona i due sfidanti. Se un giocatore non è presente nella lista, scegli ＋ Aggiungi in fondo alla tendina. Data, giornata e presenze vengono registrate automaticamente al salvataggio del match.</p>
+      <div id="lcSetupHeader" class="section-head life-title-row">
+        <h2>Partita al meglio delle 3</h2>
+        <details class="life-info" id="lcInfoTooltip">
+          <summary aria-label="Informazioni sulla modalità partita" title="Informazioni sulla modalità partita">i</summary>
+          <div id="lcSetupHelp" class="life-info-content">Seleziona i due sfidanti. Se un giocatore non è presente nella lista, scegli ＋ Aggiungi in fondo alla tendina. Data, giornata e presenze vengono registrate automaticamente al salvataggio del match.</div>
+        </details>
+      </div>
       <div id="lcModeSelector" class="field" style="margin:12px 0 16px">
         <label>Modalità partita</label>
         <div class="life-mode-choice" role="group" aria-label="Modalità partita">
@@ -471,9 +485,9 @@ body.arena-open{overflow:hidden}
           <div id="lcWinsB" class="pill life-wins">Game vinti: 0</div>
         </div>
       </div>
-      <div class="card span12 life-setup-status" style="margin-top:12px">
-        <div id="lcStatus" class="matchline"><strong>Pronto per iniziare</strong><span class="muted">Seleziona due giocatori diversi.</span></div>
-        <div class="actions"><button id="lcStartButton" onclick="startLifeMatch()">Nuova partita</button><button id="lcEndCasualButton" class="secondary" style="display:none" onclick="discardCasualLifeMatch()">Termina BO1</button></div>
+      <div class="life-setup-status">
+        <div id="lcStatus" style="display:none" aria-hidden="true"></div>
+        <div class="actions life-start-actions"><button id="lcStartButton" onclick="startLifeMatch()">Nuova partita</button><button id="lcEndCasualButton" class="secondary" style="display:none" onclick="discardCasualLifeMatch()">Termina BO1</button></div>
         <p id="lcActiveNote" class="note" style="display:none">Partita in corso. Per assegnare un game su concessione usa i pulsanti dedicati nel contatore a schermo intero.</p>
       </div>
     </div>
@@ -2088,7 +2102,7 @@ function renderLifeDisplay(){
   document.getElementById('lcModeHelp').textContent = casual
     ? 'BO1: un solo game libero, senza giocatori, mazzi o registrazione nella lega.'
     : 'BO3: risultato valido per la lega, con giocatori e salvataggio obbligatorio.';
-  document.querySelector('#lcSetupHeader h2').textContent = casual ? 'Segna vita · BO1 libero' : 'Segna vita · partita al meglio delle 3';
+  document.querySelector('#lcSetupHeader h2').textContent = casual ? 'Partita singola' : 'Partita al meglio delle 3';
   document.getElementById('lcSetupHelp').textContent = casual
     ? 'Gioca subito senza selezionare giocatori. Nessun risultato verrà salvato.'
     : 'Seleziona i due sfidanti. Se un giocatore non è presente nella lista, scegli ＋ Aggiungi in fondo alla tendina. Data, giornata e presenze vengono registrate automaticamente al salvataggio del match.';
@@ -2096,19 +2110,19 @@ function renderLifeDisplay(){
   document.getElementById('lcWinsA').style.display = casual ? 'none' : '';
   document.getElementById('lcWinsB').style.display = casual ? 'none' : '';
   const pendingResult = !!(lifeMatch && lifeMatch.finished);
-  ['lcSetupHeader','lcSetupHelp'].forEach(id => {
+  ['lcSetupHeader'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = lifeMatch ? 'none' : '';
   });
   if (lifeMatch) {
     playersEl.classList.add('started');
-    start.textContent = casual ? 'Ricomincia BO1' : 'Nuova partita';
+    start.textContent = 'Nuova partita';
     start.disabled = pendingResult;
     start.style.display = pendingResult ? 'none' : '';
     note.style.display = casual ? 'none' : 'block';
     status.innerHTML = casual ? '<strong>BO1 libero in corso</strong><span class="muted">Nessun dato viene salvato · puoi ricominciare o uscire.</span>' : `<strong>Game ${lifeMatch.gamesA + lifeMatch.gamesB + 1} · ${esc(player(lifeMatch.playerA))} ${lifeMatch.gamesA}–${lifeMatch.gamesB} ${esc(player(lifeMatch.playerB))}</strong><span class="muted">${lifeMatch.finished ? 'Match concluso · salva il risultato per continuare' : 'Partita in corso'}</span>`;
   } else {
-    start.textContent = casual ? 'Inizia BO1 libero' : 'Nuova partita';
+    start.textContent = 'Nuova partita';
     start.disabled = false;
     start.style.display = '';
     playersEl.classList.remove('started');
