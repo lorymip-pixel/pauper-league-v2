@@ -546,7 +546,7 @@ body.arena-open{overflow:hidden}
         </div>
       </div>
       <input id="brandingFile" type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="uploadLeagueImage(this)">
-      <p class="note">JPG, PNG o WebP · immagine quadrata ottimizzata a 256 × 256 px · una sola per lega.</p>
+      <p class="note">JPG, PNG o WebP · conversione JPEG quadrata ottimizzata a 256 × 256 px · una sola per lega.</p>
       <div class="actions"><button id="brandingSave" type="button" onclick="saveLeagueName()">Salva nome</button></div>
     </div>
     <div class="card span6">
@@ -1308,7 +1308,7 @@ async function loadMembers(){
 const LEAGUE_LOGO_BUCKET = 'league-logos';
 function leagueLogoUrl(meta){
   if (!meta?.id || !meta?.logo_version) return '';
-  const path = `${meta.id}/logo.webp`;
+  const path = `${meta.id}/logo.jpg`;
   const { data } = sb.storage.from(LEAGUE_LOGO_BUCKET).getPublicUrl(path);
   return data.publicUrl + '?v=' + encodeURIComponent(meta.logo_version);
 }
@@ -1355,7 +1355,7 @@ async function saveLeagueName(){
   } catch(e){ toast('Errore: ' + e.message); }
   finally { button.disabled = false; }
 }
-async function imageToWebp(file){
+async function imageToJpeg(file){
   if (!['image/png','image/jpeg','image/webp'].includes(file.type)) throw new Error('Formato non supportato');
   if (file.size > 8 * 1024 * 1024) throw new Error('Immagine troppo grande (max 8 MB)');
   const url = URL.createObjectURL(file);
@@ -1368,8 +1368,8 @@ async function imageToWebp(file){
     const ctx = canvas.getContext('2d');
     const side = Math.min(img.naturalWidth, img.naturalHeight);
     ctx.drawImage(img, (img.naturalWidth-side)/2, (img.naturalHeight-side)/2, side, side, 0, 0, 256, 256);
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', .82));
-    if (!blob || blob.type !== 'image/webp') throw new Error('Conversione WebP non supportata');
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', .82));
+    if (!blob || blob.type !== 'image/jpeg') throw new Error('Conversione JPEG non supportata');
     return blob;
   } finally { URL.revokeObjectURL(url); }
 }
@@ -1379,8 +1379,8 @@ async function uploadLeagueImage(input){
   const leagueId = currentLeagueId;
   input.disabled = true;
   try {
-    const blob = await imageToWebp(file);
-    const { error } = await sb.storage.from(LEAGUE_LOGO_BUCKET).upload(`${leagueId}/logo.webp`, blob, { upsert: true, contentType: 'image/webp', cacheControl: '3600' });
+    const blob = await imageToJpeg(file);
+    const { error } = await sb.storage.from(LEAGUE_LOGO_BUCKET).upload(`${leagueId}/logo.jpg`, blob, { upsert: true, contentType: 'image/jpeg', cacheControl: '3600' });
     if (error) throw error;
     const version = Date.now();
     const { data, error: updateError } = await sb.from('leagues').update({ logo_version: version }).eq('id', leagueId).select('id, name, logo_version').single();
@@ -1397,7 +1397,7 @@ async function removeLeagueImage(){
   const button = document.getElementById('brandingRemove');
   button.disabled = true;
   try {
-    const { error } = await sb.storage.from(LEAGUE_LOGO_BUCKET).remove([`${leagueId}/logo.webp`]);
+    const { error } = await sb.storage.from(LEAGUE_LOGO_BUCKET).remove([`${leagueId}/logo.jpg`]);
     if (error) throw error;
     const { data, error: updateError } = await sb.from('leagues').update({ logo_version: null }).eq('id', leagueId).select('id, name, logo_version').single();
     if (updateError) throw updateError;
