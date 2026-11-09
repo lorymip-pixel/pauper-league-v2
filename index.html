@@ -27,6 +27,8 @@ small,.muted{color:var(--muted)}
 .nav button.active{background:var(--accent);color:#111827;border-color:var(--accent)}
 .grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px}
 .card{background:linear-gradient(145deg,rgba(25,34,58,.97),rgba(18,25,44,.97));border:1px solid var(--line);border-radius:17px;padding:16px;min-width:0}
+/* Spaziatura tra i pannelli Mazzi, come nella griglia Panoramica */
+#decks > .card + .card{margin-top:12px}
 .span12{grid-column:span 12}.span8{grid-column:span 8}.span7{grid-column:span 7}.span6{grid-column:span 6}.span5{grid-column:span 5}.span4{grid-column:span 4}
 .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
 .metric{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px}
@@ -149,12 +151,11 @@ table{font-size:12px}th,td{padding:9px 7px}
 .life-players{display:none}.life-players.started{display:grid}
 .life-setup-status{margin-top:12px}
 .life-title-row{justify-content:flex-start;gap:10px;position:relative}
-.life-info{position:relative;flex-shrink:0}
-.life-info summary{list-style:none;cursor:pointer;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--muted);color:var(--muted);font-size:13px;font-weight:800;line-height:1;user-select:none}
-.life-info summary::-webkit-details-marker{display:none}
-.life-info summary:hover,.life-info[open] summary{border-color:var(--accent);color:var(--accent)}
-.life-info-content{position:absolute;top:calc(100% + 9px);left:0;z-index:20;width:min(330px,calc(100vw - 76px));box-sizing:border-box;padding:12px 14px;background:#202b45;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 30px #0008;color:var(--text);font-size:13px;font-weight:400;line-height:1.5}
-@media(hover:hover){.life-info:not([open]):hover .life-info-content{display:block}.life-info:not([open]) .life-info-content{display:none}}
+/* Informazioni inline: nessun popup, nessun posizionamento fuori viewport. */
+.life-info-button{flex:0 0 auto;width:26px;height:26px;border-radius:50%;border:1px solid var(--accent);background:transparent;color:var(--accent);font-size:15px;font-weight:800;padding:0;display:grid;place-items:center;cursor:pointer;line-height:1}
+.life-info-button:hover,.life-info-button[aria-expanded="true"]{background:var(--accent);color:#101625}
+.life-info-inline{position:static;display:block;width:100%;max-width:100%;box-sizing:border-box;margin:10px 0 4px;padding:12px 14px;background:#202b45;border:1px solid var(--line);border-radius:12px;color:var(--text);font-size:14px;line-height:1.5;overflow-wrap:anywhere;white-space:normal}
+.life-info-inline[hidden]{display:none !important}
 .life-start-actions{margin-top:12px}.life-start-actions #lcStartButton{width:100%}
 
 .life-confirm{position:fixed;inset:0;z-index:1200;background:#050914eF;display:none;align-items:center;justify-content:center;padding:20px}
@@ -255,6 +256,18 @@ body.arena-open{overflow:hidden}
 .leagues-brand-copy h1 span{color:var(--accent)}
 .leagues-brand-copy .eyebrow{font-size:11px;letter-spacing:2px;color:var(--accent);font-weight:800}
 @media(max-width:420px){.leagues-brand{gap:8px}.leagues-monogram{width:48px;height:47px}.leagues-brand-copy h1{font-size:22px}.leagues-brand-copy .eyebrow{font-size:10px;letter-spacing:1.3px}}
+
+/* Metashare: grafico e legenda responsive, senza librerie esterne */
+.metashare-presets{display:flex;flex-wrap:wrap;gap:7px}
+.metashare-presets button{padding:7px 11px;min-width:48px}
+.metashare-presets button.meta-active{border-color:var(--accent);color:var(--accent)}
+.metashare-layout{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:24px;padding:8px 0}
+.metashare-pie{width:min(260px,75vw);aspect-ratio:1;border-radius:50%;flex:none;position:relative}
+.metashare-legend{flex:1 1 250px;max-width:480px;display:grid;gap:8px}
+.metashare-item{display:flex;align-items:center;gap:9px;min-width:0}
+.metashare-swatch{width:12px;height:12px;border-radius:3px;flex:none}
+.metashare-name{flex:1;min-width:0;overflow-wrap:anywhere}
+.metashare-item strong{white-space:nowrap}
 </style>
 </head>
 <body>
@@ -439,11 +452,9 @@ body.arena-open{overflow:hidden}
     <div class="card span12">
       <div id="lcSetupHeader" class="section-head life-title-row">
         <h2>Partita al meglio delle 3</h2>
-        <details class="life-info" id="lcInfoTooltip">
-          <summary aria-label="Informazioni sulla modalità partita" title="Informazioni sulla modalità partita">i</summary>
-          <div id="lcSetupHelp" class="life-info-content">Seleziona i due sfidanti. Se un giocatore non è presente nella lista, scegli ＋ Aggiungi in fondo alla tendina. Data, giornata e presenze vengono registrate automaticamente al salvataggio del match.</div>
-        </details>
+        <button type="button" id="lcInfoToggle" class="life-info-button" aria-label="Mostra informazioni sulla modalità partita" aria-controls="lcSetupHelp" aria-expanded="false" onclick="toggleLifeInfo()">i</button>
       </div>
+      <div id="lcSetupHelp" class="life-info-inline" hidden>Seleziona i due sfidanti. Se un giocatore non è presente nella lista, scegli ＋ Aggiungi in fondo alla tendina. Data, giornata e presenze vengono registrate automaticamente al salvataggio del match.</div>
       <div id="lcModeSelector" class="field" style="margin:12px 0 16px">
         <label>Modalità partita</label>
         <div class="life-mode-choice" role="group" aria-label="Modalità partita">
@@ -540,6 +551,23 @@ body.arena-open{overflow:hidden}
 </section>
 
 <section id="decks" class="tabscontent">
+  <div class="card">
+    <h2>Metashare per giornata</h2>
+    <p class="note" style="margin:0 0 12px">Ogni combinazione giocatore + archetipo conta una sola volta per giornata, indipendentemente dai match disputati.</p>
+    <div class="metashare-presets" role="group" aria-label="Periodo metashare">
+      <button type="button" class="secondary" data-meta-days="7" onclick="setMetaPeriod(7)">7G</button>
+      <button type="button" class="secondary" data-meta-days="14" onclick="setMetaPeriod(14)">14G</button>
+      <button type="button" class="secondary" data-meta-days="30" onclick="setMetaPeriod(30)">30G</button>
+      <button type="button" class="secondary" data-meta-days="90" onclick="setMetaPeriod(90)">90G</button>
+      <button type="button" class="secondary" data-meta-days="all" onclick="setMetaPeriod('all')">Tutto</button>
+    </div>
+    <div class="formgrid players-date-grid" style="margin:12px 0 14px">
+      <div class="field"><label for="metaDateFrom">Dal</label><input id="metaDateFrom" type="date" onchange="renderMetashare()"></div>
+      <div class="field"><label for="metaDateTo">Al</label><input id="metaDateTo" type="date" onchange="renderMetashare()"></div>
+      <div class="field" style="align-self:end"><button type="button" class="secondary" onclick="setMetaPeriod('all')">Azzera filtro</button></div>
+    </div>
+    <div id="metashareChart" aria-live="polite"></div>
+  </div>
   <div class="card">
     <h2>Statistiche per singolo mazzo</h2>
     <p class="note" style="margin:0 0 12px">Gli archetipi possono essere aggiunti dal menu di selezione mazzo al termine di una partita.</p>
@@ -1694,8 +1722,8 @@ function renderMetrics(){
 function renderStandings(){
   const rows = stats();
   document.getElementById('standings').innerHTML = rows.length
-    ? `<table><thead><tr><th>#</th><th>Giocatore</th><th>W-L-D</th><th>Game</th><th>Punti</th><th>Win%</th></tr></thead><tbody>${
-      rows.map((p,i) => `<tr><td class="rank">${i+1}</td><td><strong>${esc(p.name)}</strong></td><td>${p.w}-${p.l}-${p.d}</td><td>${p.gw}-${p.gl}</td><td><b>${p.points}</b></td><td>${p.pct}%</td></tr>`).join('')
+    ? `<table><thead><tr><th>#</th><th>Giocatore</th><th>W-L-D</th><th>Game</th><th>Punti</th><th>Partite</th><th>Win%</th></tr></thead><tbody>${
+      rows.map((p,i) => `<tr><td class="rank">${i+1}</td><td><strong>${esc(p.name)}</strong></td><td>${p.w}-${p.l}-${p.d}</td><td>${p.gw}-${p.gl}</td><td><b>${p.points}</b></td><td>${p.played}</td><td>${p.pct}%</td></tr>`).join('')
     }</tbody></table>`
     : '<div class="empty">Aggiungi giocatori per iniziare.</div>';
 }
@@ -1789,12 +1817,66 @@ function renderPlayers(){
   }).sort((a,b) => b.points - a.points || b.pct - a.pct || b.gw - a.gw || a.name.localeCompare(b.name));
 
   let html = rows.length
-    ? `<div class="tablewrap"><table><thead><tr><th>Giocatore</th><th>W-L-D</th><th>Game</th><th>Punti</th><th>Win%</th><th>Mazzo pref.</th>${canDelete()?'<th></th>':''}</tr></thead><tbody>${
-      rows.map(p => `<tr><td><strong>${esc(p.name)}</strong></td><td>${p.w}-${p.l}-${p.d}</td><td>${p.gw}-${p.gl}</td><td><b>${p.points}</b></td><td>${p.pct}%</td><td>${esc(p.favoriteDeck)}</td>${canDelete()?`<td><button class="dangerlink" onclick="deletePlayer('${p.id}')">Elimina</button></td>`:''}</tr>`).join('')
+    ? `<div class="tablewrap"><table><thead><tr><th>Giocatore</th><th>W-L-D</th><th>Game</th><th>Punti</th><th>Partite</th><th>Win%</th><th>Mazzo pref.</th>${canDelete()?'<th></th>':''}</tr></thead><tbody>${
+      rows.map(p => `<tr><td><strong>${esc(p.name)}</strong></td><td>${p.w}-${p.l}-${p.d}</td><td>${p.gw}-${p.gl}</td><td><b>${p.points}</b></td><td>${p.played}</td><td>${p.pct}%</td><td>${esc(p.favoriteDeck)}</td>${canDelete()?`<td><button class="dangerlink" onclick="deletePlayer('${p.id}')">Elimina</button></td>`:''}</tr>`).join('')
     }</tbody></table></div>`
     : '<div class="empty">Nessun giocatore.</div>';
   if (from && to && from > to) html = '<div class="empty">La data iniziale deve precedere la data finale.</div>';
   document.getElementById('playerList').innerHTML = html;
+}
+
+
+// Il metashare misura presenze distinte giocatore/archetipo per giornata.
+// La giornata usa il numero se presente, altrimenti la data della partita.
+function setMetaPeriod(days){
+  const from = document.getElementById('metaDateFrom');
+  const to = document.getElementById('metaDateTo');
+  if (!from || !to) return;
+  if (days === 'all') { from.value=''; to.value=''; }
+  else {
+    const now = new Date();
+    const local = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const start = new Date(now.getFullYear(),now.getMonth(),now.getDate()-days+1);
+    from.value=local(start);to.value=local(now);
+  }
+  renderMetashare();
+}
+function renderMetashare(){
+  const root=document.getElementById('metashareChart');
+  if (!root) return;
+  const from=document.getElementById('metaDateFrom')?.value || '';
+  const to=document.getElementById('metaDateTo')?.value || '';
+  const activeDays=[7,14,30,90].find(days=>{
+    if(!from||!to)return false;
+    const start=new Date(to+'T12:00:00');start.setDate(start.getDate()-days+1);
+    return `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`===from;
+  });
+  document.querySelectorAll('[data-meta-days]').forEach(b=>b.classList.toggle('meta-active',b.dataset.metaDays===(activeDays?String(activeDays):(!from&&!to?'all':''))));
+  if(from&&to&&from>to){root.innerHTML='<div class="empty">La data iniziale deve precedere la data finale.</div>';return;}
+  const unique=new Set(), counts=new Map();
+  (db.matches||[]).forEach(m=>{
+    const date=String(m.date||'').slice(0,10);
+    if(!date||(from&&date<from)||(to&&date>to))return;
+    // Data inclusa nella chiave: una stessa coppia viene contata di nuovo in giornate differenti.
+    const day=m.round!=null&&m.round!==''?`round:${m.round}`:`date:${date}`;
+    [[m.playerA,m.deckA],[m.playerB,m.deckB]].forEach(([player,deckId])=>{
+      if(!player||!deckId)return;
+      const key=JSON.stringify([day,player,deckId]);
+      if(unique.has(key))return;
+      unique.add(key);counts.set(deckId,(counts.get(deckId)||0)+1);
+    });
+  });
+  const rows=[...counts].map(([id,count])=>({name:deck(id),count})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name));
+  const total=rows.reduce((sum,r)=>sum+r.count,0);
+  if(!total){root.innerHTML='<div class="empty">Nessuna presenza di mazzi nel periodo selezionato.</div>';return;}
+  const palette=['#b5f56b','#59b9ff','#ff9c63','#c49aff','#f36f98','#ffd76d','#61d5c1','#9fa8ff','#edb2e3','#9babbc'];
+  let pos=0;
+  const segments=rows.map((r,i)=>{
+    const start=pos;pos+=r.count/total*100;
+    return `${palette[i%palette.length]} ${start.toFixed(5)}% ${pos.toFixed(5)}%`;
+  });
+  const legend=rows.map((r,i)=>`<div class="metashare-item"><span class="metashare-swatch" style="background:${palette[i%palette.length]}"></span><span class="metashare-name">${esc(r.name)}</span><strong>${(100*r.count/total).toLocaleString('it-IT',{maximumFractionDigits:1})}%</strong><span class="muted">(${r.count})</span></div>`).join('');
+  root.innerHTML=`<div class="metashare-layout"><div class="metashare-pie" role="img" aria-label="Grafico a torta del metashare" style="background:conic-gradient(${segments.join(',')})"></div><div class="metashare-legend">${legend}</div></div><p class="note" style="margin:8px 0 0">${total} presenze archetipo · ${rows.length} archetipi nel periodo. Ogni giocatore è contato una volta per archetipo e giornata.</p>`;
 }
 
 function renderDeckStats(){
@@ -1948,6 +2030,7 @@ function renderAll(){
   renderMatches();
   renderPlayers();
   renderDeckStats();
+  renderMetashare();
   renderMatrix();
   renderRounds();
   renderLifeSelects();
@@ -2032,6 +2115,14 @@ async function savePlayerFromLifeModal(){
   toast(p ? 'Giocatore selezionato' : 'Giocatore aggiunto');
 }
 
+function toggleLifeInfo(){
+  const help = document.getElementById('lcSetupHelp');
+  const button = document.getElementById('lcInfoToggle');
+  const opening = help.hidden;
+  help.hidden = !opening;
+  button.setAttribute('aria-expanded', String(opening));
+  button.setAttribute('aria-label', opening ? 'Nascondi informazioni sulla modalità partita' : 'Mostra informazioni sulla modalità partita');
+}
 function selectLifeMode(mode){
   if (mode !== 'BO1' && mode !== 'BO3') return;
   if (lifeMatch && lifeMatch.finished && lifeMatch.mode !== 'BO1') return toast('Salva prima il risultato BO3');
