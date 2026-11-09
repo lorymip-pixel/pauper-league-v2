@@ -42,7 +42,10 @@ small,.muted{color:var(--muted)}
 #players .players-date-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 #players .players-date-grid .field{min-width:0;max-width:100%}
 #players .players-date-grid input[type="date"]{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;-webkit-appearance:none;appearance:none}
-@media(max-width:699px){#players .players-date-grid{grid-template-columns:minmax(0,1fr)}}
+#decks .players-date-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+#decks .players-date-grid .field{min-width:0;max-width:100%}
+#decks .players-date-grid input[type="date"]{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;-webkit-appearance:none;appearance:none}
+@media(max-width:699px){#players .players-date-grid,#decks .players-date-grid{grid-template-columns:minmax(0,1fr)}}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .stack{display:grid;gap:10px}
 .tablewrap{overflow:auto}
@@ -1722,8 +1725,8 @@ function renderMetrics(){
 function renderStandings(){
   const rows = stats();
   document.getElementById('standings').innerHTML = rows.length
-    ? `<table><thead><tr><th>#</th><th>Giocatore</th><th>W-L-D</th><th>Game</th><th>Punti</th><th>Partite</th><th>Win%</th></tr></thead><tbody>${
-      rows.map((p,i) => `<tr><td class="rank">${i+1}</td><td><strong>${esc(p.name)}</strong></td><td>${p.w}-${p.l}-${p.d}</td><td>${p.gw}-${p.gl}</td><td><b>${p.points}</b></td><td>${p.played}</td><td>${p.pct}%</td></tr>`).join('')
+    ? `<table><thead><tr><th>#</th><th>Giocatore</th><th>W-L-D</th><th>Punti</th><th>Partite</th><th>Win%</th></tr></thead><tbody>${
+      rows.map((p,i) => `<tr><td class="rank">${i+1}</td><td><strong>${esc(p.name)}</strong></td><td>${p.w}-${p.l}-${p.d}</td><td><b>${p.points}</b></td><td>${p.played}</td><td>${p.pct}%</td></tr>`).join('')
     }</tbody></table>`
     : '<div class="empty">Aggiungi giocatori per iniziare.</div>';
 }
