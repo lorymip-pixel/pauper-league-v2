@@ -67,6 +67,15 @@ td strong{font-size:14px}
 .matchline .result{font-weight:850;font-size:17px}
 .mutedline{font-size:12px;color:var(--muted)}
 .dangerlink{background:none;color:var(--red);padding:4px 6px;font-size:12px}
+.match-edit-action{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:5px}
+.match-edit-button{background:transparent;color:var(--accent);border:1px solid var(--line);padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px}
+.match-edit-button:hover{border-color:var(--accent)}
+.match-edit-overlay{position:fixed;inset:0;z-index:1100;background:#060a13db;display:none;align-items:center;justify-content:center;padding:16px;overflow-y:auto}
+.match-edit-overlay.active{display:flex}
+.match-edit-dialog{width:min(560px,100%);max-height:calc(100dvh - 32px);overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:17px;padding:20px;box-shadow:0 20px 70px #000a}
+.match-edit-dialog h2{margin-bottom:8px}
+.match-edit-dialog .actions button{flex:1}
+@media(max-width:600px){.match-edit-dialog{padding:15px}.match-edit-dialog .formgrid{grid-template-columns:minmax(0,1fr)}}
 .tiny{font-size:11px}
 .life-total{font-size:clamp(64px,12vw,84px);line-height:1.1;font-weight:900;margin:12px 0 18px;letter-spacing:-3px}
 .life-value-wrap{position:relative;display:flex;align-items:center;justify-content:center}
@@ -530,6 +539,29 @@ body.arena-open{overflow:hidden}
     </div>
   </div>
 </section>
+
+<!-- Modifica di un match esistente: disponibile soltanto per gli admin della lega. -->
+<div id="matchEditOverlay" class="match-edit-overlay" role="dialog" aria-modal="true" aria-labelledby="matchEditTitle" aria-hidden="true" onclick="if(event.target===this)closeMatchEditor()">
+  <div class="match-edit-dialog">
+    <h2 id="matchEditTitle">Modifica partita</h2>
+    <p class="note" style="margin:0 0 16px">Correggi il risultato senza creare una nuova partita. La data e la giornata rimangono invariate.</p>
+    <form id="matchEditForm">
+      <div class="formgrid">
+        <div class="field"><label for="editMatchDate">Data della partita</label><input id="editMatchDate" type="date" disabled></div>
+        <div class="field"><label for="editMatchRound">Giornata</label><input id="editMatchRound" type="text" disabled></div>
+        <div class="field"><label for="editMatchA">Giocatore A</label><select id="editMatchA" required></select></div>
+        <div class="field"><label for="editMatchDeckA">Mazzo A</label><select id="editMatchDeckA" required></select></div>
+        <div class="field"><label for="editMatchB">Giocatore B</label><select id="editMatchB" required></select></div>
+        <div class="field"><label for="editMatchDeckB">Mazzo B</label><select id="editMatchDeckB" required></select></div>
+        <div class="field"><label for="editMatchScoreA">Game vinti da A</label><select id="editMatchScoreA"><option value="2">2</option><option value="1">1</option><option value="0">0</option></select></div>
+        <div class="field"><label for="editMatchScoreB">Game vinti da B</label><select id="editMatchScoreB"><option value="0">0</option><option value="1">1</option><option value="2">2</option></select></div>
+        <div class="field full"><label for="editMatchNotes">Note</label><input id="editMatchNotes" type="text" maxlength="500"></div>
+      </div>
+      <p class="note">Risultati validi: 2-0, 2-1, 1-2, 0-2.</p>
+      <div class="actions"><button type="button" class="secondary" onclick="closeMatchEditor()">Annulla</button><button type="submit" id="editMatchSave">Salva modifiche</button></div>
+    </form>
+  </div>
+</div>
 
 <section id="players" class="tabscontent">
   <div class="card">
@@ -1936,7 +1968,7 @@ function matchCard(m, deleteBtn = false){
       </div>
     </div>
     ${m.notes ? `<div class="note">${esc(m.notes)}</div>` : ''}
-    ${deleteBtn && canDelete() ? `<div style="text-align:right"><button class="dangerlink" onclick="deleteMatch('${m.id}')">Elimina</button></div>` : ''}
+    ${deleteBtn && canDelete() ? `<div class="match-edit-action"><button type="button" class="match-edit-button" onclick="openMatchEditor('${m.id}')" aria-label="Modifica partita" title="Modifica partita"><span aria-hidden="true">✎</span> Modifica</button><button type="button" class="dangerlink" onclick="deleteMatch('${m.id}')">Elimina</button></div>` : ''}
   </div>`;
 }
 
@@ -2878,6 +2910,82 @@ function resetMatchForm(){
   document.getElementById('mDate').value = localDateISO();
   syncMatchRoundFromDate();
 }
+
+let editingMatchId = null;
+let editingMatchOriginal = null;
+function closeMatchEditor(){
+  editingMatchId = null;
+  editingMatchOriginal = null;
+  const overlay = document.getElementById('matchEditOverlay');
+  overlay.classList.remove('active');
+  overlay.setAttribute('aria-hidden','true');
+}
+function openMatchEditor(id){
+  if (!canDelete()) return toast('Solo gli admin possono modificare le partite');
+  const match = db.matches.find(m => m.id === id);
+  if (!match) return toast('Partita non trovata: aggiorna i dati');
+  editingMatchId = id;
+  editingMatchOriginal = JSON.stringify(match);
+  const list = (selectId, values, selected) => {
+    const el = document.getElementById(selectId);
+    el.innerHTML = values.map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('');
+    el.value = selected;
+  };
+  document.getElementById('editMatchDate').value = match.date || '';
+  document.getElementById('editMatchRound').value = 'Giornata ' + match.round;
+  list('editMatchA',db.players,match.playerA);
+  list('editMatchB',db.players,match.playerB);
+  list('editMatchDeckA',db.decks,deckAliases.get(match.deckA)||match.deckA);
+  list('editMatchDeckB',db.decks,deckAliases.get(match.deckB)||match.deckB);
+  document.getElementById('editMatchScoreA').value = String(match.gamesA);
+  document.getElementById('editMatchScoreB').value = String(match.gamesB);
+  document.getElementById('editMatchNotes').value = match.notes || '';
+  const overlay = document.getElementById('matchEditOverlay');
+  overlay.classList.add('active');
+  overlay.setAttribute('aria-hidden','false');
+}
+document.getElementById('matchEditForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!canDelete() || !editingMatchId) return toast('Solo gli admin possono modificare le partite');
+  const id = editingMatchId;
+  const original = db.matches.find(m => m.id === id);
+  if (!original) return toast('Partita non più presente: aggiorna la pagina');
+  const read = key => document.getElementById(key).value;
+  const patch = {
+    playerA:read('editMatchA'),deckA:read('editMatchDeckA'),
+    playerB:read('editMatchB'),deckB:read('editMatchDeckB'),
+    gamesA:Number(read('editMatchScoreA')),gamesB:Number(read('editMatchScoreB')),
+    notes:read('editMatchNotes').trim()
+  };
+  if (!patch.playerA || !patch.playerB || !patch.deckA || !patch.deckB) return toast('Completa giocatori e mazzi');
+  if (patch.playerA === patch.playerB) return toast('Seleziona due giocatori diversi');
+  if (!([0,1,2].includes(patch.gamesA) && [0,1,2].includes(patch.gamesB)) ||
+      patch.gamesA === patch.gamesB || Math.max(patch.gamesA,patch.gamesB)!==2)
+    return toast('Risultato non valido: usa 2-0, 2-1, 1-2 o 0-2');
+  const save = document.getElementById('editMatchSave');
+  save.disabled = true;
+  try {
+    // Controlla che il match non sia stato modificato/cancellato da un altro dispositivo.
+    const {data:latest,error:readError} = await sb.from('matches').select('id,data')
+      .eq('league_id',currentLeagueId).eq('id',id).maybeSingle();
+    if (readError) throw readError;
+    if (!latest) throw new Error('Questa partita è stata eliminata da un altro dispositivo');
+    const previous = JSON.parse(editingMatchOriginal);
+    const tracked = ['date','round','playerA','playerB','deckA','deckB','gamesA','gamesB','notes'];
+    if (tracked.some(k => JSON.stringify(latest.data?.[k] ?? null) !== JSON.stringify(previous[k] ?? null)))
+      throw new Error('La partita è stata modificata da un altro dispositivo. Riaprila per vedere i dati aggiornati.');
+    // Mantiene l'ID, la data e la giornata: non crea una nuova partita.
+    await updateRecord('matches',id,{...patch,draw:false});
+    closeMatchEditor();
+    await refreshAfterSave();
+    renderAll();
+    toast('Risultato corretto · statistiche aggiornate');
+  } catch(err){
+    toast('Errore modifica: '+err.message);
+    console.error(err);
+    await refreshLeagueData();
+  } finally { save.disabled = false; }
+});
 
 async function deleteMatch(id){
   if (!canDelete()) return toast('Solo gli admin possono eliminare');
