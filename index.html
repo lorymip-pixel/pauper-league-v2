@@ -1282,28 +1282,44 @@ function canonicalizeLeagueSnapshot(snapshot){
     deckA: aliases.get(m.deckA) || m.deckA,
     deckB: aliases.get(m.deckB) || m.deckB
   }));
-  // Una data identifica una sola giornata. La lista mostrata viene consolidata,
-  // senza cancellare dati: la pulizia persistente avviene con lo script SQL.
-  const rounds = [];
-  const roundsByDate = new Map();
+  // Le partite sono l'unica fonte di verità per le giornate e per le presenze.
+  // I record rounds forniscono solo numero/ID/metadata: una giornata priva di
+  // match non deve apparire, nemmeno se Supabase conserva un vecchio record.
+  const savedRoundsByDate = new Map();
+  const savedRoundsByNumber = new Map();
   for (const r of (snapshot.rounds || []).slice().sort((a,b) =>
     (Number(a.number)||Infinity) - (Number(b.number)||Infinity) || String(a.id).localeCompare(String(b.id)))){
-    if (!r.date) { rounds.push({...r}); continue; }
-    const existing = roundsByDate.get(r.date);
-    if (!existing){
-      const copy = {...r, attendees: [...new Set(Array.isArray(r.attendees) ? r.attendees : [])]};
-      roundsByDate.set(r.date, copy);
-      rounds.push(copy);
-    } else {
-      existing.attendees = [...new Set([...existing.attendees, ...(Array.isArray(r.attendees) ? r.attendees : [])])];
-    }
+    if (r.date && !savedRoundsByDate.has(r.date)) savedRoundsByDate.set(r.date,r);
+    if (Number(r.number)>0 && !savedRoundsByNumber.has(Number(r.number))) savedRoundsByNumber.set(Number(r.number),r);
   }
-  const roundNumberByDate = new Map(rounds.filter(r => r.date).map(r => [r.date, Number(r.number)]));
+  const groups = new Map();
   for (const m of matches){
-    const n = roundNumberByDate.get(m.date);
-    if (Number.isFinite(n) && n > 0) m.round = n;
-    const round = roundsByDate.get(m.date);
-    if (round) round.attendees = [...new Set([...(round.attendees || []), m.playerA, m.playerB].filter(Boolean))];
+    const date = String(m.date || '');
+    // Compatibilità con match vecchi privi di data: usa il numero giornata.
+    const key = date ? `date:${date}` : `round:${Number(m.round)||0}`;
+    if (!groups.has(key)) groups.set(key,{ date, matches: [] });
+    groups.get(key).matches.push(m);
+  }
+  const entries = [...groups.values()].map(g => {
+    const saved = g.date ? savedRoundsByDate.get(g.date) : savedRoundsByNumber.get(Number(g.matches[0].round));
+    return {...g, saved, preferredNumber: Number(saved?.number)||Number(g.matches[0].round)||0};
+  }).sort((a,b) => (a.preferredNumber || Infinity) - (b.preferredNumber || Infinity) ||
+    a.date.localeCompare(b.date) || String(a.matches[0].id).localeCompare(String(b.matches[0].id)));
+  const rounds = [];
+  const usedNumbers = new Set();
+  let nextNumber = Math.max(0,...(snapshot.rounds||[]).map(r=>Number(r.number)||0),...matches.map(m=>Number(m.round)||0));
+  for (const group of entries){
+    let number = group.preferredNumber;
+    if (!number || usedNumbers.has(number)) number = ++nextNumber;
+    usedNumbers.add(number);
+    const attendees = [...new Set(group.matches.flatMap(m => [m.playerA,m.playerB]).filter(Boolean))];
+    const round = {
+      ...(group.saved || {id:`derived_${group.date || number}`,notes:''}),
+      date: group.date || group.saved?.date || '', number, attendees
+    };
+    rounds.push(round);
+    // Corregge anche eventuali numeri discordanti tra data del match e giornata.
+    for (const m of group.matches) m.round = number;
   }
   return { ...snapshot, decks, matches, rounds, aliases };
 }
@@ -2143,55 +2159,18 @@ async function saveMatchWithRound(match){
   setSyncStatus('Match salvato · applicare lo script SQL per proteggere le scritture simultanee','info');
 }
 
-function ensureRoundForMatch(match){
-  if (!Array.isArray(db.rounds)) db.rounds = [];
-  const date = match.date || new Date().toISOString().slice(0,10);
-  let round = db.rounds.find(r => r.date === date);
-  if (!round) {
-    let number = Number(match.round) || 0;
-    const conflict = db.rounds.some(r => Number(r.number) === number && r.date !== date);
-    if (!number || conflict) number = Math.max(0, ...db.rounds.map(r => Number(r.number)||0), ...db.matches.map(m => Number(m.round)||0)) + 1;
-    round = { id: uid('r'), number, date, notes: '', attendees: [], createdAt: new Date().toISOString() };
-    db.rounds.push(round);
-    // persist later
-  }
-  match.round = Number(round.number) || Number(match.round) || 1;
-  if (!Array.isArray(round.attendees)) round.attendees = [];
-  [match.playerA, match.playerB].filter(Boolean).forEach(id => {
-    if (!round.attendees.includes(id)) round.attendees.push(id);
-  });
-  return round;
-}
-
-function reconcileRoundsFromMatches(){
-  let changed = false;
-  for (const match of db.matches || []) {
-    const beforeCount = db.rounds.length;
-    const round = ensureRoundForMatch(match);
-    if (beforeCount !== db.rounds.length) changed = true;
-    const attendees = attendeesFor(round);
-    for (const id of [match.playerA, match.playerB].filter(Boolean)) {
-      if (!attendees.includes(id)) { round.attendees.push(id); changed = true; }
-    }
-  }
-  return changed;
-}
-
 function renderRounds(){
-  reconcileRoundsFromMatches();
-  const matchRounds = [...new Set(db.matches.map(m => Number(m.round)))];
-  const attendance = attendanceRounds();
-  const rs = [...new Set([...matchRounds, ...attendance.map(r => Number(r.number))])].sort((a,b) => a - b);
-  document.getElementById('roundStats').innerHTML = rs.length ? rs.map(n => {
-    const ms = db.matches.filter(m => Number(m.round) === n);
-    const r = attendance.find(x => Number(x.number) === n);
-    const gamesN = ms.reduce((s,m) => s + m.gamesA + m.gamesB, 0);
-    const present = attendeesFor(r || {});
+  // Una giornata compare solo se esiste almeno un match in quella data.
+  const rounds = attendanceRounds();
+  document.getElementById('roundStats').innerHTML = rounds.length ? rounds.map(r => {
+    const ms = db.matches.filter(m => m.date === r.date || (!m.date && Number(m.round) === Number(r.number)));
+    const gamesN = ms.reduce((s,m) => s + Number(m.gamesA || 0) + Number(m.gamesB || 0), 0);
+    const present = attendeesFor(r);
     return `<div class="card" style="margin:10px 0;background:#11192c">
-      <div class="section-head"><div><h2>Giornata ${n}</h2><div class="mutedline">${esc(r?.date || ms[0]?.date || 'Data non indicata')}</div></div>
+      <div class="section-head"><div><h2>Giornata ${r.number}</h2><div class="mutedline">${esc(r.date || 'Data non indicata')}</div></div>
       <span class="pill">${present.length} presenti · ${ms.length} match · ${gamesN} game</span></div>
-      ${r ? `<div class="mutedline" style="margin-bottom:8px"><b>Presenze dai match:</b> ${present.map(player).map(esc).join(', ') || 'Nessuna'}</div>` : '<p class="note">Presenze non ancora registrate.</p>'}
-      ${ms.map(m => matchCard(m)).join('') || '<div class="empty">Nessuna partita registrata per questa giornata.</div>'}
+      <div class="mutedline" style="margin-bottom:8px"><b>Presenze dai match:</b> ${present.map(player).map(esc).join(', ') || 'Nessuna'}</div>
+      ${ms.map(m => matchCard(m)).join('')}
     </div>`;
   }).join('') : '<div class="empty">Non ci sono giornate registrate.</div>';
   renderAttendanceAnalytics();
@@ -2202,11 +2181,7 @@ function renderPlayerAttendanceChart(){
   const el = document.getElementById('playerAttendanceChart');
   if (!el) return;
   const rounds = attendanceRounds().slice().sort((a,b) => (a.date||'').localeCompare(b.date||'') || Number(a.number) - Number(b.number));
-  const series = rounds.map(r => {
-    const ids = new Set(attendeesFor(r));
-    if (!ids.size) (db.matches || []).filter(m => m.date === r.date).forEach(m => { if (m.playerA) ids.add(m.playerA); if (m.playerB) ids.add(m.playerB); });
-    return { round: r, count: ids.size };
-  });
+  const series = rounds.map(r => ({ round: r, count: attendeesFor(r).length }));
   if (!series.length) { el.innerHTML = '<div class="empty">Non ci sono ancora giornate da visualizzare.</div>'; return; }
   const max = Math.max(1, ...series.map(x => x.count));
   el.innerHTML = '<div class="attendance-chart">' + series.map(x => {
@@ -2908,10 +2883,26 @@ async function deleteMatch(id){
   if (!canDelete()) return toast('Solo gli admin possono eliminare');
   if (!confirm('Eliminare questa partita?')) return;
   try {
-    await deleteRecord('matches', id);
+    // La RPC elimina il match e riallinea (o rimuove) la giornata in una
+    // transazione, protetta dal medesimo lock usato durante il salvataggio.
+    const {error} = await sb.rpc('delete_league_match', {
+      target_league: currentLeagueId, target_match_id: id
+    });
+    if (error){
+      const missingRpc = ['PGRST202','42883'].includes(String(error.code)) ||
+        /could not find the function|function .* does not exist/i.test(String(error.message || ''));
+      if (!missingRpc) throw error;
+      // Anche senza lo script SQL, le giornate visibili sono ricavate dai
+      // soli match, quindi non mostreranno presenze o giornate fantasma.
+      await deleteRecord('matches',id);
+      console.warn('Installare pauper-league-giornate-allineate.sql per eliminare anche le giornate orfane dal database.');
+    } else {
+      markLeagueWrite();
+      db.matches = db.matches.filter(m => m.id !== id);
+    }
     await refreshAfterSave();
     renderAll();
-    toast('Partita eliminata');
+    toast('Partita eliminata · giornate aggiornate');
   } catch (e) { toast('Errore: ' + e.message); }
 }
 
