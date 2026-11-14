@@ -370,15 +370,6 @@ body.arena-open{overflow:hidden}
       <div id="newAdminLeagueStatus" class="muted" style="margin-top:8px" aria-live="polite"></div>
     </div>
     <div id="leaguesError" class="error-box" style="display:none"></div>
-    <div id="leaguesEmpty" class="card" style="display:none;text-align:center;padding:32px 20px">
-      <h2 style="margin-bottom:10px">Nessuna lega ancora</h2>
-      <p class="muted" style="margin-bottom:18px">Non appartieni ancora a nessuna lega. Chiedi un invito all’amministratore oppure inserisci un codice di invito.</p>
-      <div class="field" style="max-width:320px;margin:0 auto 12px">
-        <label>Codice / link invito</label>
-        <input id="inviteCodeInput" placeholder="Incolla il codice o il link">
-      </div>
-      <button id="btnAcceptInvite">Accetta invito</button>
-    </div>
     <div id="leaguesList" class="league-grid"></div>
     <details class="card league-accordion" style="margin-top:20px">
       <summary>Hai un invito?<span class="accordion-chevron" aria-hidden="true">⌄</span></summary>
@@ -1183,13 +1174,10 @@ async function claimAdminLeague(){
 
 function renderLeaguesList(){
   const list = document.getElementById('leaguesList');
-  const empty = document.getElementById('leaguesEmpty');
   if (!userLeagues.length) {
     list.innerHTML = '';
-    empty.style.display = 'block';
     return;
   }
-  empty.style.display = 'none';
   list.innerHTML = userLeagues.map(l => `
     <div class="league-card" onclick="enterLeague('${l.league_id}', '${l.role}')">
       <div class="league-card-head"><div class="league-avatar">${leagueLogoMarkup(l.league, 'P')}</div><div class="league-card-text"><h3>${esc(l.league?.name || 'Lega senza nome')}</h3><div class="role">${esc(l.role)}</div></div></div>
@@ -1556,7 +1544,7 @@ async function createInvite(){
 
 async function acceptInvite(token){
   if (!token) {
-    token = (document.getElementById('inviteCodeInput')?.value || document.getElementById('inviteCodeInput2')?.value || '').trim();
+    token = (document.getElementById('inviteCodeInput2')?.value || '').trim();
     // extract token from full URL if pasted
     try {
       const u = new URL(token);
@@ -3081,7 +3069,6 @@ document.getElementById('btnBackLogin')?.addEventListener('click', () => {
   document.getElementById('authForgotView').style.display = 'none';
   document.getElementById('authLoginView').style.display = 'block';
 });
-document.getElementById('btnAcceptInvite')?.addEventListener('click', () => acceptInvite());
 document.getElementById('btnAcceptInvite2')?.addEventListener('click', () => acceptInvite());
 document.getElementById('btnCreateInvite')?.addEventListener('click', createInvite);
 document.getElementById('btnCreateGuest')?.addEventListener('click', createGuestLink);
