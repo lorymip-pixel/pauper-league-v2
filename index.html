@@ -3,12 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b1020">
-<link rel="manifest" href="./manifest.webmanifest">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Pauper League">
-<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<meta name="theme-color" content="#111827">
 <title>Pauper League</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -519,8 +514,8 @@ body.arena-open{overflow:hidden}
       <summary class="match-entry-summary"><span>Registra una partita</span><span class="match-entry-icon" aria-hidden="true">＋</span></summary>
       <form id="matchForm">
         <div class="formgrid">
-          <div class="field"><label>Giornata</label><input id="mRound" type="number" min="1" value="1" required></div>
-          <div class="field"><label>Data</label><input id="mDate" type="date" required></div>
+          <div class="field"><label>Giornata (automatica dalla data)</label><input id="mRound" type="number" min="1" value="1" readonly required></div>
+          <div class="field"><label>Data</label><input id="mDate" type="date" onchange="syncMatchRoundFromDate()" required></div>
           <div class="field"><label>Giocatore A</label><select id="mA" required></select></div>
           <div class="field"><label>Mazzo A</label><select id="mDeckA" required></select></div>
           <div class="field"><label>Giocatore B</label><select id="mB" required></select></div>
@@ -818,6 +813,17 @@ let guestToken = null;
 let db = { players: [], decks: [], matches: [], rounds: [], version: 2, league: { name: '' } };
 let realtimeChannel = null;
 let isGuestMode = false;
+// Sincronizzazione: Realtime velocizza, polling garantisce il recupero di eventi persi.
+let leagueSyncTimer = null;
+let leagueSyncDebounce = null;
+let leagueSyncPromise = null;
+let leagueSnapshotSignature = '';
+let leagueWriteGeneration = 0;
+let leagueSyncSequence = 0;
+let leagueSyncFailed = false;
+const LEAGUE_SYNC_MS = 8000;
+let deckAliases = new Map();
+
 
 /* ============================================================
    UTILITY
@@ -1195,6 +1201,7 @@ function renderLeaguesList(){
 }
 
 async function enterLeague(leagueId, role){
+  stopLeagueSync();
   showLoading(true);
   currentLeagueId = leagueId;
   currentRole = role;
@@ -1214,6 +1221,7 @@ async function enterLeague(leagueId, role){
 }
 
 function leaveLeague(){
+  stopLeagueSync();
   if (lifeMatch?.mode === 'BO1') discardCasualLifeMatch();
   if (realtimeChannel) {
     sb.removeChannel(realtimeChannel);
@@ -1228,6 +1236,7 @@ function leaveLeague(){
 }
 
 async function enterGuestMode(token){
+  stopLeagueSync();
   showLoading(true);
   try {
     const { data, error } = await sb.rpc('read_league_by_guest_token', { guest_token: token });
@@ -1238,22 +1247,194 @@ async function enterGuestMode(token){
     currentLeagueId = data.league.id;
     currentRole = 'guest';
     currentLeagueMeta = data.league;
-    db.players = (data.players || []).map(r => ({ ...r.data, id: r.id }));
-    db.decks   = (data.decks   || []).map(r => ({ ...r.data, id: r.id }));
-    db.matches = (data.matches || []).map(r => ({ ...r.data, id: r.id }));
-    db.rounds  = (data.rounds  || []).map(r => ({ ...r.data, id: r.id }));
+    applyLeagueSnapshot({players:dbRows(data.players),decks:dbRows(data.decks),matches:dbRows(data.matches),rounds:dbRows(data.rounds)},true);
     db.league  = { name: data.league.name || 'Lega' };
     renderLeagueBranding();
     applyRoleUI();
     renderAll();
     showScreen('screenApp');
-    setSyncStatus('Modalità ospite · sola lettura', 'ok');
+    startLeagueSync();
+    setSyncStatus('Modalità ospite · sola lettura · aggiornamento automatico', 'ok');
   } catch (e) {
     console.error(e);
     showAuthError('Link ospite non valido, scaduto o revocato.');
     showScreen('screenAuth');
   }
   showLoading(false);
+}
+
+/* ============================================================
+   SINCRONIZZAZIONE E RICONCILIAZIONE
+   ============================================================ */
+function localDateISO(d = new Date()){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function normalizedDeckName(name){
+  return String(name || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('it-IT');
+}
+function dbRows(rows){
+  return (rows || []).map(r => ({ ...(r.data || {}), id: r.id }));
+}
+function canonicalizeLeagueSnapshot(snapshot){
+  // La migrazione SQL consolida i record nel DB; qui li mostriamo coerentemente
+  // anche prima della migrazione e durante refresh concorrenti.
+  const aliases = new Map();
+  const decks = [];
+  const byName = new Map();
+  const orderedDecks = (snapshot.decks || []).slice().sort((a,b) =>
+    String(a.createdAt || '').localeCompare(String(b.createdAt || '')) || String(a.id).localeCompare(String(b.id)));
+  for (const d of orderedDecks){
+    const key = normalizedDeckName(d.name);
+    const canonical = key && byName.get(key);
+    if (canonical) aliases.set(d.id, canonical.id);
+    else { decks.push(d); if (key) byName.set(key, d); }
+  }
+  const matches = (snapshot.matches || []).map(m => ({
+    ...m,
+    deckA: aliases.get(m.deckA) || m.deckA,
+    deckB: aliases.get(m.deckB) || m.deckB
+  }));
+  // Una data identifica una sola giornata. La lista mostrata viene consolidata,
+  // senza cancellare dati: la pulizia persistente avviene con lo script SQL.
+  const rounds = [];
+  const roundsByDate = new Map();
+  for (const r of (snapshot.rounds || []).slice().sort((a,b) =>
+    (Number(a.number)||Infinity) - (Number(b.number)||Infinity) || String(a.id).localeCompare(String(b.id)))){
+    if (!r.date) { rounds.push({...r}); continue; }
+    const existing = roundsByDate.get(r.date);
+    if (!existing){
+      const copy = {...r, attendees: [...new Set(Array.isArray(r.attendees) ? r.attendees : [])]};
+      roundsByDate.set(r.date, copy);
+      rounds.push(copy);
+    } else {
+      existing.attendees = [...new Set([...existing.attendees, ...(Array.isArray(r.attendees) ? r.attendees : [])])];
+    }
+  }
+  const roundNumberByDate = new Map(rounds.filter(r => r.date).map(r => [r.date, Number(r.number)]));
+  for (const m of matches){
+    const n = roundNumberByDate.get(m.date);
+    if (Number.isFinite(n) && n > 0) m.round = n;
+    const round = roundsByDate.get(m.date);
+    if (round) round.attendees = [...new Set([...(round.attendees || []), m.playerA, m.playerB].filter(Boolean))];
+  }
+  return { ...snapshot, decks, matches, rounds, aliases };
+}
+function snapshotSignature(snapshot){
+  const sorted = name => (snapshot[name] || []).slice().sort((a,b) => String(a.id).localeCompare(String(b.id)));
+  return JSON.stringify([sorted('players'), sorted('decks'), sorted('matches'), sorted('rounds')]);
+}
+function applyLeagueSnapshot(snapshot, force = false){
+  const normalized = canonicalizeLeagueSnapshot(snapshot);
+  const signature = snapshotSignature(normalized);
+  deckAliases = normalized.aliases;
+  if (!force && signature === leagueSnapshotSignature) return false;
+  leagueSnapshotSignature = signature;
+  for (const table of ['players','decks','matches','rounds']) db[table] = normalized[table];
+  renderAll();
+  return true;
+}
+function stopLeagueSync(){
+  if (leagueSyncTimer) clearInterval(leagueSyncTimer);
+  if (leagueSyncDebounce) clearTimeout(leagueSyncDebounce);
+  leagueSyncTimer = leagueSyncDebounce = null;
+  leagueSyncSequence++;
+  leagueSnapshotSignature = '';
+  leagueSyncPromise = null;
+  leagueSyncFailed = false;
+  deckAliases = new Map();
+}
+function startLeagueSync(){
+  if (leagueSyncTimer) clearInterval(leagueSyncTimer);
+  leagueSyncTimer = setInterval(() => {
+    if (document.visibilityState === 'visible' && currentLeagueId && !document.hidden) refreshLeagueData();
+  }, LEAGUE_SYNC_MS);
+}
+function scheduleLeagueRefresh(delay = 250){
+  if (!currentLeagueId) return;
+  clearTimeout(leagueSyncDebounce);
+  leagueSyncDebounce = setTimeout(() => { leagueSyncDebounce = null; refreshLeagueData(); }, delay);
+}
+async function fetchLeagueSnapshot(leagueId, token){
+  if (token){
+    const {data,error} = await sb.rpc('read_league_by_guest_token', {guest_token:token});
+    if (error) throw error;
+    if (!data?.league || data.league.id !== leagueId) throw new Error('Accesso ospite non valido');
+    return { players:dbRows(data.players), decks:dbRows(data.decks), matches:dbRows(data.matches), rounds:dbRows(data.rounds) };
+  }
+  const responses = await Promise.all(['players','decks','matches','rounds'].map(t =>
+    sb.from(t).select('id, data').eq('league_id',leagueId)));
+  const snapshot = {};
+  for (let i=0;i<responses.length;i++){
+    if (responses[i].error) throw responses[i].error;
+    snapshot[['players','decks','matches','rounds'][i]] = dbRows(responses[i].data);
+  }
+  return snapshot;
+}
+async function refreshLeagueData(options = {}){
+  if (!currentLeagueId) return false;
+  if (leagueSyncPromise) return leagueSyncPromise;
+  const leagueId = currentLeagueId;
+  const syncSequence = leagueSyncSequence;
+  const writeGeneration = leagueWriteGeneration;
+  const token = isGuestMode ? guestToken : null;
+  const job = (async () => {
+    try {
+      const snapshot = await fetchLeagueSnapshot(leagueId,token);
+      if (currentLeagueId !== leagueId || leagueSyncSequence !== syncSequence || leagueWriteGeneration !== writeGeneration) return false;
+      const changed = applyLeagueSnapshot(snapshot);
+      if (changed) setSyncStatus('Dati della lega aggiornati · sincronizzati', 'ok');
+      else if (options.notify || leagueSyncFailed) setSyncStatus('Dati sincronizzati', 'ok');
+      leagueSyncFailed = false;
+      return changed;
+    } catch(e){
+      console.warn('[Pauper League] Refresh fallito:',e);
+      leagueSyncFailed = true;
+      setSyncStatus('Sincronizzazione temporaneamente non disponibile · nuovo tentativo automatico','error');
+      return false;
+    }
+  })();
+  leagueSyncPromise = job;
+  try { return await job; }
+  finally { if (leagueSyncPromise === job) leagueSyncPromise = null; }
+}
+// In caso di modifica locale, non pubblicare una risposta di rete partita prima del salvataggio.
+function markLeagueWrite(){ leagueWriteGeneration++; }
+async function refreshAfterSave(){
+  // Attende eventuale refresh precedente; poi legge tutti i dati da Supabase.
+  if (leagueSyncPromise) await leagueSyncPromise;
+  await refreshLeagueData({notify:true});
+}
+async function getOrCreateDeck(name){
+  if (!canWrite() || !currentLeagueId) throw new Error('Permesso negato');
+  const clean = String(name || '').trim().replace(/\s+/g,' ');
+  const key = normalizedDeckName(clean);
+  if (!key) throw new Error('Inserisci il nome dell’archetipo');
+  // Legge il DB, non una lista locale che può essere rimasta indietro.
+  const {data,error} = await sb.from('decks').select('id,data').eq('league_id',currentLeagueId);
+  if (error) throw error;
+  let found = dbRows(data).find(d => normalizedDeckName(d.name) === key);
+  if (found){ await refreshAfterSave(); return db.decks.find(d => normalizedDeckName(d.name) === key) || found; }
+  const candidate = {id:uid('d'),name:clean,createdAt:new Date().toISOString()};
+  try { await insertRecord('decks',candidate); }
+  catch(e){
+    // Un altro dispositivo potrebbe aver inserito lo stesso nome nel frattempo.
+    if (String(e.code) !== '23505') throw e;
+    const fresh = await sb.from('decks').select('id,data').eq('league_id',currentLeagueId);
+    if (fresh.error) throw fresh.error;
+    found = dbRows(fresh.data).find(d => normalizedDeckName(d.name) === key);
+    if (!found) throw e;
+  }
+  await refreshAfterSave();
+  return db.decks.find(d => normalizedDeckName(d.name) === key) || found || candidate;
+}
+function syncFinalDeckOptions(){
+  ['lcFinalDeckA','lcFinalDeckB'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const prev = deckAliases.get(sel.value) || sel.value;
+    sel.innerHTML = db.decks.map(d => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('') + '<option value="__add__">＋ Aggiungi</option>';
+    if (db.decks.some(d => d.id === prev) || prev === '__add__') sel.value = prev;
+  });
 }
 
 /* ============================================================
@@ -1272,10 +1453,7 @@ async function loadLeagueData(leagueId){
   if (mRes.error) throw mRes.error;
   if (rRes.error) throw rRes.error;
 
-  db.players = (pRes.data || []).map(r => ({ ...r.data, id: r.id }));
-  db.decks   = (dRes.data || []).map(r => ({ ...r.data, id: r.id }));
-  db.matches = (mRes.data || []).map(r => ({ ...r.data, id: r.id }));
-  db.rounds  = (rRes.data || []).map(r => ({ ...r.data, id: r.id }));
+  applyLeagueSnapshot({players:dbRows(pRes.data),decks:dbRows(dRes.data),matches:dbRows(mRes.data),rounds:dbRows(rRes.data)},true);
   currentLeagueMeta = lRes.data || { id: leagueId, name: 'Lega' };
   db.league = { name: currentLeagueMeta.name || 'Lega' };
 
@@ -1285,29 +1463,25 @@ async function loadLeagueData(leagueId){
   document.getElementById('rolePill').textContent = currentRole === 'guest' ? 'Visitor' : (currentRole || '—');
 
   subscribeRealtime(leagueId);
+  startLeagueSync();
   renderAll();
 }
 
 function subscribeRealtime(leagueId){
   if (realtimeChannel) sb.removeChannel(realtimeChannel);
   realtimeChannel = sb.channel('league-' + leagueId)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `league_id=eq.${leagueId}` }, () => reloadTable('players'))
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'decks',   filter: `league_id=eq.${leagueId}` }, () => reloadTable('decks'))
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'matches', filter: `league_id=eq.${leagueId}` }, () => reloadTable('matches'))
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'rounds',  filter: `league_id=eq.${leagueId}` }, () => reloadTable('rounds'))
-    .subscribe((status) => {
-      if (status === 'SUBSCRIBED') setSyncStatus('Sincronizzazione live attiva', 'ok');
+    .on('postgres_changes', {event:'*',schema:'public',table:'players',filter:`league_id=eq.${leagueId}`}, () => scheduleLeagueRefresh())
+    .on('postgres_changes', {event:'*',schema:'public',table:'decks',filter:`league_id=eq.${leagueId}`}, () => scheduleLeagueRefresh())
+    .on('postgres_changes', {event:'*',schema:'public',table:'matches',filter:`league_id=eq.${leagueId}`}, () => scheduleLeagueRefresh())
+    .on('postgres_changes', {event:'*',schema:'public',table:'rounds',filter:`league_id=eq.${leagueId}`}, () => scheduleLeagueRefresh())
+    .subscribe(status => {
+      if (currentLeagueId !== leagueId) return;
+      if (status === 'SUBSCRIBED') setSyncStatus('Sincronizzazione live attiva · controllo automatico ogni 8 s', 'ok');
+      else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')
+        setSyncStatus('Live non disponibile · aggiornamento automatico ogni 8 s', 'info');
     });
 }
-
-async function reloadTable(table){
-  if (!currentLeagueId) return;
-  const { data, error } = await sb.from(table).select('id, data').eq('league_id', currentLeagueId);
-  if (error) { console.error(error); return; }
-  db[table] = (data || []).map(r => ({ ...r.data, id: r.id }));
-  renderAll();
-  setSyncStatus('Dati aggiornati da un altro dispositivo', 'ok');
-}
+async function reloadTable(){ return refreshLeagueData(); }
 
 async function insertRecord(table, item){
   if (!canWrite()) throw new Error('Permesso negato');
@@ -1315,6 +1489,7 @@ async function insertRecord(table, item){
   delete row.data.id;
   const { error } = await sb.from(table).insert(row);
   if (error) throw error;
+  markLeagueWrite();
   db[table].push(item);
 }
 
@@ -1326,6 +1501,7 @@ async function updateRecord(table, id, patch){
   delete newData.id;
   const { error } = await sb.from(table).update({ data: newData }).eq('league_id', currentLeagueId).eq('id', id);
   if (error) throw error;
+  markLeagueWrite();
   Object.assign(existing, patch);
 }
 
@@ -1333,6 +1509,7 @@ async function deleteRecord(table, id){
   if (!canDelete()) throw new Error('Solo gli admin possono eliminare');
   const { error } = await sb.from(table).delete().eq('league_id', currentLeagueId).eq('id', id);
   if (error) throw error;
+  markLeagueWrite();
   db[table] = db[table].filter(x => x.id !== id);
 }
 
@@ -1774,7 +1951,7 @@ function renderTopMatchups(){
 function fillSelect(id, items, placeholder){
   const el = document.getElementById(id);
   if (!el) return;
-  const old = el.value;
+  const old = (id === 'mDeckA' || id === 'mDeckB') ? (deckAliases.get(el.value) || el.value) : el.value;
   el.innerHTML = (placeholder ? `<option value="">${placeholder}</option>` : '') + items.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
   if (items.some(x => x.id === old)) el.value = old;
 }
@@ -1928,6 +2105,56 @@ function renderMatrix(){
   document.getElementById('matrix').innerHTML = html;
 }
 
+// Salvataggio atomico (RPC Supabase dalla migrazione SQL): una data = una giornata.
+// La transazione aggiunge anche le presenze senza perdere scritture concorrenti.
+async function saveMatchWithRound(match){
+  if (!canWrite() || !currentLeagueId) throw new Error('Permesso negato');
+  const {data,error} = await sb.rpc('save_league_match', {
+    target_league:currentLeagueId, match_id:match.id, match_data:match
+  });
+  if (!error){
+    match.round = Number(data?.round_number) || match.round;
+    markLeagueWrite();
+    return;
+  }
+  const missingRpc = ['PGRST202','42883'].includes(String(error.code)) ||
+    /could not find the function|function .* does not exist/i.test(String(error.message || ''));
+  if (!missingRpc) throw error;
+  // Retrocompatibilità se la migrazione SQL non è stata ancora eseguita.
+  // Il salvataggio resta possibile, ma la protezione atomica richiede la RPC.
+  console.warn('Eseguire pauper-league-sincronizzazione.sql per la riconciliazione atomica.');
+  const league = currentLeagueId;
+  const {data:current,error:readError} = await sb.from('rounds').select('id,data').eq('league_id',league);
+  if (readError) throw readError;
+  let rounds = dbRows(current);
+  let round = rounds.find(r => r.date === match.date);
+  if (!round){
+    const num = Math.max(0,...rounds.map(r => Number(r.number)||0),...db.matches.map(m => Number(m.round)||0)) + 1;
+    round = {id:uid('r'),number:num,date:match.date,notes:'',attendees:[],createdAt:new Date().toISOString()};
+    try {await insertRecord('rounds',round);}
+    catch(e){
+      if (String(e.code) !== '23505') throw e;
+      const retry = await sb.from('rounds').select('id,data').eq('league_id',league);
+      if (retry.error) throw retry.error;
+      round = dbRows(retry.data).find(r => r.date === match.date);
+      if (!round) throw e;
+    }
+  }
+  // Rilettura prima dell'update per ridurre (non eliminare) i conflitti.
+  const latest = await sb.from('rounds').select('id,data').eq('league_id',league).eq('id',round.id).maybeSingle();
+  if (latest.error) throw latest.error;
+  if (latest.data){
+    round = {...(latest.data.data||{}),id:latest.data.id};
+    const attendees = [...new Set([...(round.attendees || []),match.playerA,match.playerB].filter(Boolean))];
+    const {error:upError} = await sb.from('rounds').update({data:{...latest.data.data,attendees}}).eq('league_id',league).eq('id',round.id);
+    if (upError) throw upError;
+    markLeagueWrite();
+  }
+  match.round = Number(round.number) || 1;
+  await insertRecord('matches',match);
+  setSyncStatus('Match salvato · applicare lo script SQL per proteggere le scritture simultanee','info');
+}
+
 function ensureRoundForMatch(match){
   if (!Array.isArray(db.rounds)) db.rounds = [];
   const date = match.date || new Date().toISOString().slice(0,10);
@@ -2042,6 +2269,8 @@ function renderAll(){
   renderMatrix();
   renderRounds();
   renderLifeSelects();
+  syncFinalDeckOptions();
+  syncMatchRoundFromDate();
   if (canAdmin()) { loadMembers(); loadGuestLinks(); }
 }
 
@@ -2112,6 +2341,7 @@ async function savePlayerFromLifeModal(){
     p = { id: uid('p'), name: clean, createdAt: new Date().toISOString() };
     try {
       await insertRecord('players', p);
+      await refreshAfterSave();
       setSyncStatus('Giocatore salvato', 'ok');
     } catch (e) { toast('Errore salvataggio: ' + e.message); return; }
   }
@@ -2252,7 +2482,7 @@ function startLifeMatch(){
   if (!a || !b) return toast('Seleziona entrambi i giocatori');
   if (a === b) return toast('Scegli due giocatori diversi');
   if (lifeMatch && !lifeMatch.finished && !confirm('Abbandonare il match in corso e iniziarne uno nuovo?')) return;
-  const today = new Date().toISOString().slice(0,10);
+  const today = localDateISO();
   const allKnown = [...attendanceRounds().map(r => ({ number: Number(r.number), date: r.date })), ...db.matches.map(m => ({ number: Number(m.round)||0, date: m.date }))];
   const sameDay = allKnown.filter(x => x.date === today).map(x => x.number);
   const maxRound = Math.max(0, ...allKnown.map(x => x.number));
@@ -2328,6 +2558,10 @@ function openLifeArena(){
   const arena = document.getElementById('lifeArena');
   if (!arena) return;
   arena.classList.add('active');
+  // Android Fullscreen API: un overlay esterno ad arena resta nascosto,
+  // indipendentemente dallo z-index. Lo spostiamo dentro l'elemento fullscreen.
+  const modal = document.getElementById('lifeConfirm');
+  if (modal && modal.parentElement !== arena) arena.appendChild(modal);
   document.body.classList.add('arena-open');
   renderLifeDisplay();
   if (arena.requestFullscreen) {
@@ -2339,6 +2573,9 @@ function openLifeArena(){
 function closeLifeArena(quiet = false){
   const arena = document.getElementById('lifeArena');
   if (arena) arena.classList.remove('active');
+  const modal = document.getElementById('lifeConfirm');
+  const host = document.getElementById('screenApp');
+  if (modal && host && modal.parentElement === arena) host.appendChild(modal);
   document.body.classList.remove('arena-open');
   if (document.fullscreenElement && document.exitFullscreen) {
     const p = document.exitFullscreen();
@@ -2538,11 +2775,9 @@ async function saveDeckFromLifeModal(){
   const input = document.getElementById('addDeckName');
   const clean = input.value.trim();
   if (!clean) { input.focus(); return toast('Inserisci il nome dell’archetipo'); }
-  let d = db.decks.find(x => x.name.trim().toLowerCase() === clean.toLowerCase());
-  if (!d) {
-    d = { id: uid('d'), name: clean, createdAt: new Date().toISOString() };
-    try { await insertRecord('decks', d); } catch (e) { toast('Errore: ' + e.message); return; }
-  }
+  let d;
+  try { d = await getOrCreateDeck(clean); }
+  catch (e) { toast('Errore archetipo: ' + e.message); return; }
   ['lcFinalDeckA','lcFinalDeckB'].forEach(selId => {
     const el = document.getElementById(selId);
     if (el && !Array.from(el.options).some(o => o.value === d.id)) {
@@ -2564,11 +2799,9 @@ async function addFinalDeckInline(){
   if (!input || !canWrite()) return;
   const clean = input.value.trim();
   if (!clean) return toast('Inserisci il nome dell’archetipo');
-  let d = db.decks.find(x => x.name.trim().toLowerCase() === clean.toLowerCase());
-  if (!d) {
-    d = { id: uid('d'), name: clean, createdAt: new Date().toISOString() };
-    try { await insertRecord('decks', d); } catch (e) { toast('Errore: ' + e.message); return; }
-  }
+  let d;
+  try { d = await getOrCreateDeck(clean); }
+  catch (e) { toast('Errore archetipo: ' + e.message); return; }
   ['lcFinalDeckA','lcFinalDeckB'].forEach(id => {
     const sel = document.getElementById(id);
     if (sel && !Array.from(sel.options).some(o => o.value === d.id)) {
@@ -2578,7 +2811,7 @@ async function addFinalDeckInline(){
     }
   });
   input.value = '';
-  toast(d ? 'Archetipo già presente' : 'Archetipo aggiunto');
+  toast('Archetipo disponibile nella lega');
 }
 
 function setLifeResultNavigationLock(locked){
@@ -2595,8 +2828,8 @@ async function saveLifeMatch(){
   const isDraw = lifeMatch.gamesA === lifeMatch.gamesB;
   const playerA = lifeMatch.playerA;
   const playerB = lifeMatch.playerB;
-  const deckA = document.getElementById('lcFinalDeckA')?.value || '';
-  const deckB = document.getElementById('lcFinalDeckB')?.value || '';
+  const deckA = deckAliases.get(document.getElementById('lcFinalDeckA')?.value) || document.getElementById('lcFinalDeckA')?.value || '';
+  const deckB = deckAliases.get(document.getElementById('lcFinalDeckB')?.value) || document.getElementById('lcFinalDeckB')?.value || '';
   if (!playerA || !playerB || playerA === playerB) { alert('I giocatori della partita non sono validi.'); return; }
   if (!deckA || !deckB || !db.decks.some(d => d.id === deckA) || !db.decks.some(d => d.id === deckB)) {
     alert('Seleziona l’archetipo utilizzato da entrambi i giocatori.');
@@ -2605,7 +2838,7 @@ async function saveLifeMatch(){
   const m = {
     id: uid('m'),
     round: Number(lifeMatch.round) || 1,
-    date: lifeMatch.date || new Date().toISOString().slice(0,10),
+    date: lifeMatch.date || localDateISO(),
     playerA, deckA, playerB, deckB,
     gamesA: Number(lifeMatch.gamesA),
     gamesB: Number(lifeMatch.gamesB),
@@ -2614,15 +2847,8 @@ async function saveLifeMatch(){
     createdAt: new Date().toISOString()
   };
   try {
-    ensureRoundForMatch(m);
-    // persist round if new
-    const round = db.rounds.find(r => r.date === m.date);
-    if (round) {
-      const exists = await sb.from('rounds').select('id').eq('league_id', currentLeagueId).eq('id', round.id).maybeSingle();
-      if (!exists.data) await insertRecord('rounds', round);
-      else await updateRecord('rounds', round.id, { attendees: round.attendees, number: round.number });
-    }
-    await insertRecord('matches', m);
+    await saveMatchWithRound(m);
+    await refreshAfterSave();
     lifeMatch = null;
     setLifeResultNavigationLock(false);
     renderAll();
@@ -2666,14 +2892,8 @@ document.getElementById('matchForm')?.addEventListener('submit', async e => {
   if (!([2,1,0].includes(m.gamesA) && [2,1,0].includes(m.gamesB)) || m.gamesA === m.gamesB || Math.max(m.gamesA, m.gamesB) !== 2 || m.gamesA + m.gamesB < 2)
     return toast('Punteggio non valido: 2-0, 2-1, 1-2 o 0-2');
   try {
-    ensureRoundForMatch(m);
-    const round = db.rounds.find(r => r.date === m.date);
-    if (round) {
-      const exists = await sb.from('rounds').select('id').eq('league_id', currentLeagueId).eq('id', round.id).maybeSingle();
-      if (!exists.data) await insertRecord('rounds', round);
-      else await updateRecord('rounds', round.id, { attendees: round.attendees, number: round.number });
-    }
-    await insertRecord('matches', m);
+    await saveMatchWithRound(m);
+    await refreshAfterSave();
     document.getElementById('mNotes').value = '';
     renderAll();
     toast('Partita registrata');
@@ -2683,9 +2903,17 @@ document.getElementById('matchForm')?.addEventListener('submit', async e => {
   }
 });
 
+function syncMatchRoundFromDate(){
+  const date = document.getElementById('mDate')?.value;
+  const output = document.getElementById('mRound');
+  if (!date || !output) return;
+  const todayRound = db.rounds.find(r => r.date === date)?.number || db.matches.find(m => m.date === date)?.round;
+  output.value = Number(todayRound) || Math.max(0,...db.rounds.map(r => Number(r.number)||0),...db.matches.map(m=>Number(m.round)||0)) + 1;
+}
 function resetMatchForm(){
   document.getElementById('matchForm').reset();
-  document.getElementById('mDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('mDate').value = localDateISO();
+  syncMatchRoundFromDate();
 }
 
 async function deleteMatch(id){
@@ -2693,6 +2921,7 @@ async function deleteMatch(id){
   if (!confirm('Eliminare questa partita?')) return;
   try {
     await deleteRecord('matches', id);
+    await refreshAfterSave();
     renderAll();
     toast('Partita eliminata');
   } catch (e) { toast('Errore: ' + e.message); }
@@ -2705,6 +2934,7 @@ async function deletePlayer(id){
   if (!confirm('Eliminare ' + player(id) + '?')) return;
   try {
     await deleteRecord('players', id);
+    await refreshAfterSave();
     renderAll();
   } catch (e) { toast('Errore: ' + e.message); }
 }
@@ -2716,6 +2946,7 @@ async function deleteDeck(id){
   if (!confirm('Eliminare ' + deck(id) + '?')) return;
   try {
     await deleteRecord('decks', id);
+    await refreshAfterSave();
     renderAll();
   } catch (e) { toast('Errore: ' + e.message); }
 }
@@ -2856,25 +3087,24 @@ document.getElementById('btnCreateInvite')?.addEventListener('click', createInvi
 document.getElementById('btnCreateGuest')?.addEventListener('click', createGuestLink);
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && lifeMatch && !lifeMatch.finished) acquirePauperWakeLock();
+  if (document.visibilityState === 'visible') {
+    if (lifeMatch && !lifeMatch.finished) acquirePauperWakeLock();
+    if (currentLeagueId) scheduleLeagueRefresh(100);
+  }
 });
+window.addEventListener('focus', () => { if (currentLeagueId) scheduleLeagueRefresh(120); });
+window.addEventListener('online', () => { if (currentLeagueId) scheduleLeagueRefresh(120); });
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement && document.getElementById('lifeArena')?.classList.contains('active'))
     document.body.classList.add('arena-open');
 });
 
 // Init date
-if (document.getElementById('mDate')) document.getElementById('mDate').value = new Date().toISOString().slice(0,10);
+if (document.getElementById('mDate')) document.getElementById('mDate').value = localDateISO();
+syncMatchRoundFromDate();
 
 // Boot
 initAuth();
-</script>
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(err => console.warn('PWA service worker:', err));
-  });
-}
 </script>
 </body>
 </html>
